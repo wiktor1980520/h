@@ -1,9 +1,14 @@
 // index.ts — Worker 入口：静态资源 + REST API + R2 媒体回源
 import type { Env } from './env';
-import type { Job } from './types';
+import type { Job, MediaRef } from './types';
 import { emptyJob, newJobId } from './types';
 import { JobStore } from './store/d1';
 import { ConfigStore, CONFIG_KEYS, overlayConfig } from './store/config';
+import { MediaStore } from './storage/r2';
+import { PublisherRegistry } from './publish';
+import { DouyinPublisher } from './publish/douyin';
+import { WeixinChannelsPublisher } from './publish/weixin';
+import { XiaohongshuPublisher } from './publish/xiaohongshu';
 
 export { HuangtoolsPipelineWorkflow } from './workflow/pipeline';
 
@@ -25,7 +30,8 @@ export default {
       url.pathname === '/v1/webhooks/xhs'
     ) {
       if (url.pathname.startsWith('/media/')) {
-        return serveMedia(env, decodeURIComponent(url.pathname.slice('/media/'.length)));
+        const download = url.searchParams.get('download') === '1';
+        return serveMedia(env, decodeURIComponent(url.pathname.slice('/media/'.length)), download);
       }
       return routeApi(request, url, env);
     }
@@ -63,6 +69,10 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
     return createJob(request, env, store);
   }
 
+  if (p === '/api/upload' && request.method === 'POST') {
+    return uploadFile(request, env);
+  }
+
   if (p === '/api/jobs' && request.method === 'GET') {
     const status = url.searchParams.get('status') as Job['status'] | null;
     const cursor = url.searchParams.get('cursor') ?? undefined;
@@ -84,6 +94,11 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
     }
   }
 
+  const publishMatch = /^\/api\/jobs\/([^/]+)\/publish$/.exec(p);
+  if (publishMatch && request.method === 'POST') {
+    return publishJob(publishMatch[1], env, store);
+  }
+
   if (p.endsWith('/cancel') && request.method === 'POST') {
     const id = p.split('/').filter(Boolean).at(-2);
     if (id) return cancelJob(id, env, store);
@@ -98,13 +113,21 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
 
 async function createJob(request: Request, env: Env, store: JobStore): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as Partial<CreateJobBody>;
-  if (!body.personImageURL || !body.garmentValue) {
-    return json({ error: 'personImageURL 与 garmentValue 为必填' }, 400);
+  const personImages: MediaRef[] =
+    Array.isArray(body.personImages) && body.personImages.length
+      ? body.personImages
+      : body.personImageURL
+        ? [{ kind: 'url', value: body.personImageURL }]
+        : [];
+  const active = personImages[0] ?? { kind: 'url' as const, value: '' };
+  if (!active.value || !body.garmentValue) {
+    return json({ error: '需至少一张人物图片 与 商品图片/电商链接' }, 400);
   }
   const cfg = await overlayConfig(env);
   const id = newJobId();
   const job = emptyJob(id, {
-    personImage: { kind: 'url', value: body.personImageURL },
+    personImage: active,
+    personImages,
     garment: {
       kind: 'url',
       value: body.garmentValue,
@@ -115,6 +138,7 @@ async function createJob(request: Request, env: Env, store: JobStore): Promise<R
       resolution: (body.resolution ?? cfg.DEFAULT_RESOLUTION) as Job['options']['resolution'],
       duration: body.duration ?? parseInt(cfg.DEFAULT_DURATION || '15', 10),
       withSound: body.withSound ?? true,
+      manualPublish: body.manualPublish ?? false,
     },
   });
   await store.create(job);
@@ -164,7 +188,7 @@ async function xhsCallback(request: Request, env: Env, store: JobStore): Promise
   return json({ ok: true });
 }
 
-async function serveMedia(env: Env, key: string): Promise<Response> {
+async function serveMedia(env: Env, key: string, download = false): Promise<Response> {
   const obj = await env.MEDIA_BUCKET.get(key);
   if (!obj) return new Response('Not Found', { status: 404 });
   const headers = new Headers();
@@ -172,7 +196,82 @@ async function serveMedia(env: Env, key: string): Promise<Response> {
   headers.set('etag', obj.httpEtag);
   headers.set('cache-control', `public, max-age=${env.VIDEO_TTL_DAYS ? parseInt(env.VIDEO_TTL_DAYS, 10) * 86400 : 2592000}`);
   headers.set('access-control-allow-origin', '*');
+  if (download) {
+    const filename = key.split('/').pop() ?? 'download';
+    headers.set('content-disposition', `attachment; filename="${filename}"`);
+  }
   return new Response(obj.body, { headers });
+}
+
+/** POST /api/upload — multipart 之外走 base64 JSON，避免手写 multipart 解析。返回 R2 引用 */
+async function uploadFile(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as {
+    fileName?: string;
+    contentType?: string;
+    data?: string;
+  } | null;
+  if (!body || typeof body.data !== 'string' || !body.data) {
+    return json({ error: 'data 必填（base64 或 dataURL）' }, 400);
+  }
+  const contentType = body.contentType || mimeFromName(body.fileName || '') || 'application/octet-stream';
+  const raw = body.data.includes(',') ? body.data.slice(body.data.indexOf(',') + 1) : body.data;
+  const ext = extFromMime(contentType) || 'bin';
+  const key = `uploads/${crypto.randomUUID()}.${ext}`;
+  await env.MEDIA_BUCKET.put(key, base64ToBytes(raw), { httpMetadata: { contentType } });
+  const ref: MediaRef = { kind: 'r2', value: key };
+  return json({ ref, key }, 201);
+}
+
+/** POST /api/jobs/:id/publish — 生成完成后手动触发发布（重发 pending/manual/failed 目标） */
+async function publishJob(id: string, env: Env, store: JobStore): Promise<Response> {
+  const job = await store.get(id);
+  if (!job) return notFound();
+  if (journalHasVideo(job) !== true) {
+    return json({ error: '视频尚未生成完成，请稍后再发布' }, 400);
+  }
+  const cfg = await overlayConfig(env);
+  const media = new MediaStore(env, cfg.R2_PUBLIC_BASE);
+  const registry = buildRegistry(cfg, media);
+  const out: Array<{ platform: string; status: string; error?: string; url?: string; externalId?: string }> = [];
+  for (const t of job.publish) {
+    if (t.status === 'published') {
+      out.push({ platform: t.platform, status: 'published', url: t.url, externalId: t.externalId });
+      continue;
+    }
+    const pub = registry.get(t.platform);
+    if (!pub || !pub.ready) {
+      t.status = 'failed';
+      t.error = '平台未配置或未就绪';
+      out.push({ platform: t.platform, status: 'failed', error: t.error });
+      continue;
+    }
+    const res = await pub.publish({ jobId: job.id, videoR2Key: job.video!.output!.value, title: job.parsed?.title ?? `AI 换装短视频 ${job.id}` });
+    if (res.status === 'published') {
+      t.status = 'published';
+      t.externalId = res.externalId;
+      t.url = res.url;
+      t.publishedAt = new Date().toISOString();
+      t.error = undefined;
+    } else {
+      t.status = 'failed';
+      t.error = res.error;
+    }
+    out.push({ platform: t.platform, status: t.status, error: t.error, url: t.url, externalId: t.externalId });
+  }
+  await store.save(job);
+  return json({ ok: true, results: out });
+}
+
+function journalHasVideo(job: Job): boolean {
+  return !!(job.status === 'succeeded' && job.video?.output?.value);
+}
+
+function buildRegistry(cfg: Env, media: MediaStore): PublisherRegistry {
+  return new PublisherRegistry([
+    new DouyinPublisher(cfg, media),
+    new WeixinChannelsPublisher(cfg, media),
+    new XiaohongshuPublisher(cfg, media),
+  ]);
 }
 
 async function listPlatforms(env: Env): Promise<Array<{ platform: string; ready: boolean; note?: string }>> {
@@ -213,12 +312,29 @@ async function saveConfig(request: Request, env: Env): Promise<Response> {
 
 interface CreateJobBody {
   personImageURL?: string;
+  /** 已上传到 R2 的多张人物图引用（优先于此字段） */
+  personImages?: MediaRef[];
   garmentType?: 'image' | 'link';
   garmentValue?: string;
   resolution?: '480p' | '720p' | '1080p';
   duration?: number;
   withSound?: boolean;
+  manualPublish?: boolean;
   publish?: Array<Job['publish'][number]['platform']>;
+}
+
+function mimeFromName(name: string): string {
+  const n = name.toLowerCase().split('.').pop() ?? '';
+  return ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4' })[n] ?? '';
+}
+function extFromMime(mime: string): string {
+  return ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'video/mp4': 'mp4' })[mime] ?? 'bin';
+}
+function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(b64);
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 function json(data: unknown, status = 200): Response {

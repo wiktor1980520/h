@@ -23,6 +23,8 @@ export interface VideoOptions {
   resolution: Resolution;
   duration: number; // 秒
   withSound: boolean;
+  /** true=生成完成后不自动发布，由用户在页面手动触发发布 */
+  manualPublish?: boolean;
 }
 
 export interface MediaRef {
@@ -37,7 +39,7 @@ export interface GarmentSource extends MediaRef {
 
 export interface PublishTarget {
   platform: Platform;
-  status: 'pending' | 'published' | 'failed';
+  status: 'pending' | 'manual' | 'published' | 'failed';
   externalId?: string;
   url?: string;
   error?: string;
@@ -61,6 +63,8 @@ export interface VideoResult {
   output?: MediaRef;
   provider?: string;
   coverImage?: MediaRef;
+  /** 生成使用的提示词（用于前端可视化展示） */
+  prompt?: string;
 }
 
 export interface LogEntry {
@@ -75,7 +79,8 @@ export interface Job {
   status: JobStatus;
   stage: Stage;
   // 输入
-  personImage: MediaRef;
+  personImage: MediaRef; // 生效的试穿人物图（personImages 中的第一个或直给 url）
+  personImages?: MediaRef[]; // 允许上传/提供多张人物图
   garment: GarmentSource; // image 直给 | link 需解析
   // 各阶段产物
   parsed?: ParsedGarment;

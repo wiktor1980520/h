@@ -3,103 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AI 换装工作室 · Cloudflare</title>
+    <title>AI 换装工作室</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app">
-      <header class="topbar">
-        <div>
-          <h1>AI 换装工作室</h1>
-          <p class="sub">人物图 × 电商链接 → 15s 试穿短视频 → 多平台发布（Cloudflare Workers + D1 + R2 + Workflows）</p>
-        </div>
-        <div id="platforms" class="platforms"></div>
-      </header>
+    <nav class="topbar">
+      <a class="brand" href="#/dashboard">✨ AI 换装工作室</a>
+      <div class="nav-links">
+        <a href="#/dashboard" data-nav="dashboard">看板</a>
+        <a href="#/new" data-nav="new">新建任务</a>
+        <a href="#/config" data-nav="config">配置</a>
+      </div>
+    </nav>
 
-      <section class="card form-card">
-        <h2>新建任务</h2>
-        <form id="job-form">
-          <div class="row">
-            <label>
-              <span>人物图片 URL</span>
-              <input name="person_image_url" type="url" placeholder="https://…/person.jpg" required />
-            </label>
-            <label>
-              <span>商品来源</span>
-              <select name="garment_type" id="garment-type">
-                <option value="image">商品图片 URL</option>
-                <option value="link" selected>电商链接（自动解析）</option>
-              </select>
-            </label>
-          </div>
-          <div class="row">
-            <label class="span-2">
-              <span>商品图片或电商链接</span>
-              <input name="garment_value" type="text" placeholder="https://item.jd.com/… 或直接商品图链接，支持京东/淘宝/拼多多等" required />
-            </label>
-          </div>
-          <div class="row">
-            <label>
-              <span>分辨率</span>
-              <select name="resolution">
-                <option value="1080p" selected>1080p</option>
-                <option value="720p">720p</option>
-                <option value="480p">480p</option>
-              </select>
-            </label>
-            <label>
-              <span>时长（秒）</span>
-              <select name="duration">
-                <option value="15" selected>15</option>
-                <option value="10">10</option>
-                <option value="5">5</option>
-              </select>
-            </label>
-            <label class="check">
-              <input name="with_sound" type="checkbox" checked /> 带原声
-            </label>
-          </div>
-          <div class="row">
-            <fieldset class="span-3">
-              <legend>自动发布到</legend>
-              <label class="pill"><input type="checkbox" name="publish" value="douyin" checked />抖音（挂车）</label>
-              <label class="pill"><input type="checkbox" name="publish" value="xiaohongshu" />小红书</label>
-              <label class="pill"><input type="checkbox" name="publish" value="weixin" />视频号</label>
-            </fieldset>
-          </div>
-          <div class="actions">
-            <button type="submit" class="primary">创建任务</button>
-            <div id="form-msg" class="msg"></div>
-          </div>
-        </form>
-      </section>
-
-      <section class="card config-card">
-        <header class="list-head">
-          <h2>第三方 Key 配置（写入数据库）</h2>
-          <span class="hint">保存后由 D1 读取，优先于 Worker 环境变量</span>
-        </header>
-        <form id="config-form" class="config-grid"></form>
-      </section>
-
-      <section class="card">
-        <header class="list-head">
-          <h2>任务列表</h2>
-          <div>
-            <select id="status-filter">
-              <option value="">全部</option>
-              <option value="queued">排队中</option>
-              <option value="running">进行中</option>
-              <option value="succeeded">成功</option>
-              <option value="failed">失败</option>
-              <option value="canceled">已取消</option>
-            </select>
-            <button id="refresh" type="button">刷新</button>
-          </div>
-        </header>
-        <div id="jobs" class="jobs"><div class="empty">暂无任务</div></div>
-      </section>
-    </main>
+    <main id="view" class="app"></main>
 
     <script type="module" src="/app.js"></script>
   </body>

@@ -98,29 +98,44 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
       current.stage = 'video';
       await store.save(current);
       const gen = buildVideo(cfg, media, videoKind(cfg.VIDEO_MODEL));
+      const prompt = composePrompt({
+        title: current.parsed?.title,
+        category: parsed?.category,
+        duration: current.options.duration,
+      });
       const downloadURL = await gen.generate({
         tryOnImageKey: tryOnKey,
         options: current.options,
         duration: current.options.duration,
-        prompt: '女装电商展示，模特自然行走转身，背景简洁，商品清晰',
+        prompt,
       });
       const key = media.key(jobId, 'video', 'mp4');
       const resp = await fetch(downloadURL);
       if (!resp.ok) throw new Error(`下载成品视频失败: HTTP ${resp.status}`);
       await media.saveBytes(key, resp.body!, 'video/mp4');
-      current.video = { output: { kind: 'r2', value: key }, provider: gen.name };
+      current.video = { output: { kind: 'r2', value: key }, provider: gen.name, prompt };
       pushLog(current, 'video', 'info', '视频生成并落库');
       await store.save(current);
       return key;
     });
 
-    // 5. 发布
+    // 5. 发布（manualPublish 时生成后不自动发，等用户在页面手动触发）
     await step.do('publish to platforms', async () => {
       const current = await this.requireJob(store, jobId);
       current.stage = 'publish';
       const targets = current.publish.length ? current.publish : defaultTargets(cfg.PUBLISH_ON);
       current.publish = targets;
       await store.save(current);
+
+      if (current.options.manualPublish) {
+        for (const t of targets) {
+          t.status = 'manual';
+          t.error = undefined;
+        }
+        pushLog(current, 'publish', 'info', '已完成生成，等待手动发布');
+        await store.save(current);
+        return;
+      }
 
       const registry = this.buildRegistry(media, cfg);
       for (const target of targets) {
@@ -176,6 +191,14 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
 
 function videoKind(model: string | undefined): 'kling' | 'seedance' {
   return model?.startsWith('seedance') ? 'seedance' : 'kling';
+}
+
+/** 组装可读、可视化的生成提示词（结构化描述，供前端展示） */
+function composePrompt(opts: { title?: string; category?: string; duration: number }): string {
+  const cat = opts.category ?? 'dress';
+  const catText =
+    cat === 'top' ? '上装' : cat === 'bottom' ? '下装' : '连衣裙';
+  return `【女装电商展示】模特身着${catText}${opts.title ? `（商品：${opts.title}）` : ''}，自然行走转身展示穿着效果，背景简洁干净，光线均匀，${opts.duration}秒运镜流畅，突出服装版型与细节，画面质感真实。`;
 }
 
 function defaultTargets(pubOn: string | undefined): PublishTarget[] {
