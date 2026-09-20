@@ -83,7 +83,10 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
       const current = await this.requireJob(store, jobId);
       current.stage = 'tryon';
       await store.save(current);
-      const vton = buildVton(cfg, media);
+      const vton = buildVton(cfg, media, (status, attempt) => {
+        pushLog(current, 'tryon', 'info', `轮询 ${attempt}: ${status}`);
+        store.save(current).catch(() => {});
+      });
       const bytes = await vton.tryOn({
         personImage: inputs.person,
         garmentImage: inputs.garment,
