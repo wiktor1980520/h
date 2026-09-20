@@ -3,6 +3,7 @@ import type { Env } from './env';
 import type { Job } from './types';
 import { emptyJob, newJobId } from './types';
 import { JobStore } from './store/d1';
+import { ConfigStore, CONFIG_KEYS, overlayConfig } from './store/config';
 
 export { HuangtoolsPipelineWorkflow } from './workflow/pipeline';
 
@@ -37,6 +38,11 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
 
   if (p === '/api/platforms' && request.method === 'GET') {
     return json({ platforms: await listPlatforms(env) });
+  }
+
+  if (p === '/api/config') {
+    if (request.method === 'GET') return getConfig(env);
+    if (request.method === 'POST') return saveConfig(request, env);
   }
 
   if (p === '/api/settings') {
@@ -90,6 +96,7 @@ async function createJob(request: Request, env: Env, store: JobStore): Promise<R
   if (!body.personImageURL || !body.garmentValue) {
     return json({ error: 'personImageURL 与 garmentValue 为必填' }, 400);
   }
+  const cfg = await overlayConfig(env);
   const id = newJobId();
   const job = emptyJob(id, {
     personImage: { kind: 'url', value: body.personImageURL },
@@ -100,8 +107,8 @@ async function createJob(request: Request, env: Env, store: JobStore): Promise<R
     },
     publish: (body.publish ?? []).map((p) => ({ platform: p, status: 'pending' })),
     options: {
-      resolution: (body.resolution ?? env.DEFAULT_RESOLUTION) as Job['options']['resolution'],
-      duration: body.duration ?? parseInt(env.DEFAULT_DURATION || '15', 10),
+      resolution: (body.resolution ?? cfg.DEFAULT_RESOLUTION) as Job['options']['resolution'],
+      duration: body.duration ?? parseInt(cfg.DEFAULT_DURATION || '15', 10),
       withSound: body.withSound ?? true,
     },
   });
@@ -164,11 +171,39 @@ async function serveMedia(env: Env, key: string): Promise<Response> {
 }
 
 async function listPlatforms(env: Env): Promise<Array<{ platform: string; ready: boolean; note?: string }>> {
+  const cfg = await overlayConfig(env);
   const out: Array<{ platform: string; ready: boolean; note?: string }> = [];
-  out.push({ platform: 'douyin', ready: !!env.DOUYIN_ACCESS_TOKEN, note: env.DOUYIN_ACCESS_TOKEN ? undefined : '缺少 DOUYIN_ACCESS_TOKEN' });
-  out.push({ platform: 'weixin', ready: !!env.WEIXIN_CHANNELS_ACCESS_TOKEN, note: env.WEIXIN_CHANNELS_ACCESS_TOKEN ? undefined : '缺少 WEIXIN_CHANNELS_ACCESS_TOKEN' });
-  out.push({ platform: 'xiaohongshu', ready: !!env.XHS_RPA_WEBHOOK, note: env.XHS_RPA_WEBHOOK ? undefined : '需 XHS_RPA_WEBHOOK（本地 RPA 桥）' });
+  out.push({ platform: 'douyin', ready: !!cfg.DOUYIN_ACCESS_TOKEN, note: cfg.DOUYIN_ACCESS_TOKEN ? undefined : '缺少 DOUYIN_ACCESS_TOKEN' });
+  out.push({ platform: 'weixin', ready: !!cfg.WEIXIN_CHANNELS_ACCESS_TOKEN, note: cfg.WEIXIN_CHANNELS_ACCESS_TOKEN ? undefined : '缺少 WEIXIN_CHANNELS_ACCESS_TOKEN' });
+  out.push({ platform: 'xiaohongshu', ready: !!cfg.XHS_RPA_WEBHOOK, note: cfg.XHS_RPA_WEBHOOK ? undefined : '需 XHS_RPA_WEBHOOK（本地 RPA 桥）' });
   return out;
+}
+
+/** GET /api/config — 返回各键是否已配置（值掩码，避免公开泄露第三方 key） */
+async function getConfig(env: Env): Promise<Response> {
+  const cfg = await new ConfigStore(env).all();
+  return json({
+    keys: CONFIG_KEYS.map((k) => ({
+      key: k,
+      set: cfg[k] !== undefined && cfg[k] !== '',
+      masked: cfg[k] ? '••••••••' : '',
+      envFallback: !!(env as Env)[k as keyof Env] || undefined,
+    })),
+  });
+}
+
+/** POST /api/config — body: { values: {键: 值} }；值置空字符串则删除该键。受可选 CONFIG_TOKEN 保护 */
+async function saveConfig(request: Request, env: Env): Promise<Response> {
+  if (env.CONFIG_TOKEN) {
+    const auth = request.headers.get('authorization') ?? '';
+    if (auth !== `Bearer ${env.CONFIG_TOKEN}`) {
+      return json({ error: 'unauthorized' }, 401);
+    }
+  }
+  const body = (await request.json().catch(() => null)) as { values?: Record<string, string> } | null;
+  if (!body || !body.values) return json({ error: 'values 必填，形如 { "DASHSCOPE_API_KEY": "sk-xxx" }' }, 400);
+  await new ConfigStore(env).save(body.values);
+  return json({ ok: true });
 }
 
 interface CreateJobBody {

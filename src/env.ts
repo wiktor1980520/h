@@ -37,4 +37,10 @@ export interface Env {
   // ---- Workers AI 评估路径 ----
   USE_WORKERS_AI_LLM?: string;
   WORKERS_AI_LLM?: string;
+
+  // ---- 数据库配置相关 ----
+  /** AES-GCM 加密第三方 key 落库的密钥（建议 Cloudflare Secret 注入）；未设则明文存 */
+  DATA_ENCRYPTION_KEY?: string;
+  /** 保护 /api/config 写操作的访问令牌（可选）；未设则允许直接写入 */
+  CONFIG_TOKEN?: string;
 }

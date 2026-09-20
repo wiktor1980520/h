@@ -15,6 +15,7 @@ import { buildVton } from '../providers/vton';
 import { buildVideo } from '../providers/video';
 import { MediaStore } from '../storage/r2';
 import { JobStore } from '../store/d1';
+import { overlayConfig } from '../store/config';
 
 export interface PipelineParams {
   jobId: string;
@@ -28,6 +29,8 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
     const { jobId } = event.payload;
     const store = new JobStore(this.env);
     const media = new MediaStore(this.env, this.env.R2_PUBLIC_BASE);
+    // 第三方 key 以数据库配置优先，env 兜底
+    const cfg = await overlayConfig(this.env);
 
     const job = await this.requireJob(store, jobId);
     job.status = 'running';
@@ -40,7 +43,7 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
       const current = await this.requireJob(store, jobId);
       let result = current.parsed;
       if (current.garment.source === 'link') {
-        const p = await new GarmentParser(this.env).parse(current.garment.value);
+        const p = await new GarmentParser(cfg).parse(current.garment.value);
         pushLog(current, 'parse', 'info', `解析到商品图`);
         current.parsed = {
           garmentImage: { kind: 'url', value: p.garmentImageURL },
@@ -75,7 +78,7 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
       const current = await this.requireJob(store, jobId);
       current.stage = 'tryon';
       await store.save(current);
-      const vton = buildVton(this.env, media);
+      const vton = buildVton(cfg, media);
       const bytes = await vton.tryOn({
         personImage: inputs.person,
         garmentImage: inputs.garment,
@@ -94,7 +97,7 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
       const current = await this.requireJob(store, jobId);
       current.stage = 'video';
       await store.save(current);
-      const gen = buildVideo(this.env, media, videoKind(this.env.VIDEO_MODEL));
+      const gen = buildVideo(cfg, media, videoKind(cfg.VIDEO_MODEL));
       const downloadURL = await gen.generate({
         tryOnImageKey: tryOnKey,
         options: current.options,
@@ -115,11 +118,11 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
     await step.do('publish to platforms', async () => {
       const current = await this.requireJob(store, jobId);
       current.stage = 'publish';
-      const targets = current.publish.length ? current.publish : defaultTargets(this.env.PUBLISH_ON);
+      const targets = current.publish.length ? current.publish : defaultTargets(cfg.PUBLISH_ON);
       current.publish = targets;
       await store.save(current);
 
-      const registry = this.buildRegistry(media);
+      const registry = this.buildRegistry(media, cfg);
       for (const target of targets) {
         const pub = registry.get(target.platform);
         if (!pub || !pub.ready) {
@@ -155,11 +158,11 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
     return { jobId, status: 'succeeded' };
   }
 
-  private buildRegistry(media: MediaStore): PublisherRegistry {
+  private buildRegistry(media: MediaStore, cfg: Env): PublisherRegistry {
     return new PublisherRegistry([
-      new DouyinPublisher(this.env, media),
-      new WeixinChannelsPublisher(this.env, media),
-      new XiaohongshuPublisher(this.env, media),
+      new DouyinPublisher(cfg, media),
+      new WeixinChannelsPublisher(cfg, media),
+      new XiaohongshuPublisher(cfg, media),
     ]);
   }
 

@@ -87,3 +87,19 @@ button:hover { filter: brightness(1.1); }
 .stage-dots .dot.done { background: var(--ok); }
 .stage-dots .dot.active { background: var(--accent); animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
+
+/* ---- 配置面板 ---- */
+.hint { color: var(--muted); font-size: 12px; }
+.config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.cfg-item { gap: 6px; font-size: 12px; color: var(--muted); }
+.cfg-item code { color: #aab3d6; font-size: 11px; }
+.cfg-row { display: flex; gap: 8px; align-items: center; }
+.cfg-row input[type="password"] {
+  flex: 1; padding: 9px 12px; border-radius: 9px; border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--text); font-size: 13px;
+}
+.cfg-row input[type="password"].set { border-color: #1e4b31; }
+.cfg-row input[type="password"]:focus { outline: none; border-color: var(--accent); }
+.cfg-clear { padding: 8px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); font-size: 12px; white-space: nowrap; }
+.cfg-clear:hover { color: var(--err); border-color: #5b2330; }
+.cfg-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; }

@@ -30,18 +30,31 @@ Cloudflare Worker (src/index.ts)   ← 单一入口，Serving Assets + REST API
 ## 目录
 
 ```
-migrations/0001_init.sql   D1 表结构
+migrations/0001_init.sql   D1 表结构（jobs / publish_log）
+migrations/0002_app_config.sql  第三方 key 配置表（写入数据库）
 public/                    前端（index.html / styles.css / app.js）
 src/
-  index.ts                 Worker 入口 + REST API + /media 回源
+  index.ts                 Worker 入口 + REST API + /media 回源 + /api/config
   env.ts                   绑定类型
   types.ts                 任务领域模型
-  store/d1.ts              D1 存取
+  store/d1.ts              D1 任务存取
+  store/config.ts          第三方 key 数据库配置（AES-GCM 加密落库，env 兜底）
   storage/r2.ts            R2 存取 / dataURL / 下载落库
   workflow/pipeline.ts     多步骤编排核心
   providers/               async(DashScope)、parser(电商解析)、vton、video、llm、http
   publish/                 douyin / weixin / xiaohongshu + 注册表
 ```
+
+## 第三方 key 配置（写入数据库）
+
+抖音/小红书/大模型等第三方凭据 **无需再用 worker 环境变量**，前端「配置」面板或 API 直接写入 D1 `app_config` 表，运行时优先读取（env 兜底）：
+
+- `GET /api/config` → 各键是否已配置（值掩码，不泄露明文）
+- `POST /api/config`   body `{ "values": { "DOUYIN_ACCESS_TOKEN": "xxx" } }`，值为空串即删除该键
+- 落库前用 `DATA_ENCRYPTION_KEY`（Cloudflare Secret）做 AES-GCM 加密；未设置则明文
+- 可选 `CONFIG_TOKEN`（Cloudflare Secret）保护写接口，前端填写后以 `Authorization: Bearer` 提交
+
+应用迁移：`wrangler d1 migrations apply DB`（本地 `--local`）
 
 ## 本地开发
 

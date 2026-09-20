@@ -3,6 +3,20 @@ const $ = (sel) => document.querySelector(sel);
 
 const STAGE_ORDER = ['init', 'parse', 'tryon', 'video', 'publish', 'done'];
 
+const CONFIG_FIELDS = [
+  ['DASHSCOPE_API_KEY', '百炼/DashScope API Key'],
+  ['TRYON_MODEL', '试穿模型'],
+  ['VIDEO_MODEL', '图生视频模型（kling / seedance）'],
+  ['IMAGE_TO_VIDEO_ENDPOINT', '图生视频接口地址'],
+  ['KOLORS_OR_SEEDANCE_API_KEY', '即梦/可灵 API Key'],
+  ['DOUYIN_CLIENT_KEY', '抖音 Client Key'],
+  ['DOUYIN_CLIENT_SECRET', '抖音 Client Secret'],
+  ['DOUYIN_ACCESS_TOKEN', '抖音 access_token'],
+  ['WEIXIN_CHANNELS_APPID', '视频号 AppID'],
+  ['WEIXIN_CHANNELS_ACCESS_TOKEN', '视频号 access_token'],
+  ['XHS_RPA_WEBHOOK', '小红书 RPA Webhook'],
+];
+
 async function api(path, opts) {
   const res = await fetch(path, {
     headers: { 'content-type': 'application/json' },
@@ -164,12 +178,97 @@ function initForm() {
   });
 }
 
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function initConfig() {
+  const form = $('#config-form');
+  const grid = CONFIG_FIELDS.map(
+    ([key, labelTxt]) => `
+    <label class="cfg-item">
+      <span>${esc(labelTxt)} <code>${key}</code></span>
+      <div class="cfg-row">
+        <input type="password" name="${key}" autocomplete="new-password" placeholder="未配置" />
+        <button type="button" class="cfg-clear" data-key="${key}" title="从数据库清除该 key">清除</button>
+      </div>
+    </label>`,
+  ).join('');
+  const tokenRow = `
+    <label class="cfg-item">
+      <span>配置访问令牌 <code>CONFIG_TOKEN</code>（可选）</span>
+      <input type="password" name="config_token" autocomplete="new-password" placeholder="仅当 Worker 设了 CONFIG_TOKEN 时填写" />
+    </label>`;
+  form.innerHTML =
+    grid +
+    tokenRow +
+    `<div class="cfg-actions"><button type="submit" class="primary">保存配置</button><span id="config-msg" class="msg"></span></div>`;
+
+  api('/api/config').then((data) => loadConfigState(form, data));
+
+  form.addEventListener('click', (e) => {
+    const btn = e.target.closest('.cfg-clear');
+    if (btn) {
+      const inp = form.querySelector(`input[name="${btn.dataset.key}"]`);
+      inp.value = '__CLEAR__';
+      saveConfigValues();
+    }
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveConfigValues();
+  });
+}
+
+function loadConfigState(form, data) {
+  for (const k of data.keys || []) {
+    const inp = form.querySelector(`input[name="${k.key}"]`);
+    if (!inp) continue;
+    if (inp.value === '__CLEAR__') inp.value = '';
+    inp.placeholder = k.set ? '已配置（留空则不变）' : '未配置';
+    inp.classList.toggle('set', !!k.set);
+  }
+}
+
+async function saveConfigValues() {
+  const form = $('#config-form');
+  const token = form.querySelector('input[name="config_token"]')?.value || '';
+  const values = {};
+  for (const [key] of CONFIG_FIELDS) {
+    const v = form.querySelector(`input[name="${key}"]`)?.value ?? '';
+    if (v === '__CLEAR__') values[key] = '';
+    else if (v) values[key] = v;
+  }
+  const msg = $('#config-msg');
+  msg.className = 'msg';
+  msg.textContent = '保存中…';
+  const headers = { 'content-type': 'application/json' };
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ values }) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    msg.className = 'msg err';
+    msg.textContent = '保存失败：' + (data.error ?? res.status);
+    return;
+  }
+  msg.className = 'msg';
+  msg.textContent = '已保存到数据库。';
+  setTimeout(() => (msg.textContent = ''), 3000);
+  form.querySelector('input[name="config_token"]').value = '';
+  const s = await api('/api/config');
+  loadConfigState(form, s);
+  const platforms = await api('/api/platforms');
+  if (platforms.platforms) renderPlatforms(platforms.platforms);
+}
+
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 async function boot() {
   initForm();
+  initConfig();
   $('#refresh').addEventListener('click', loadJobs);
   $('#status-filter').addEventListener('change', loadJobs);
   const s = await api('/api/settings');
