@@ -646,7 +646,8 @@ async function saveConfig() {
   msg.className = 'msg';
   msg.textContent = '保存中…';
   const headers = { 'content-type': 'application/json' };
-  if (token) headers.authorization = `Bearer ${token}`;
+  // 写保护令牌走独立头；登录密钥由 api() 通过 authorization 自动携带
+  if (token) headers['x-config-token'] = token;
   const res = await api('/api/config', { method: 'POST', headers, body: JSON.stringify({ values }) });
   msg.className = res.ok ? 'msg' : 'msg err';
   msg.textContent = res.ok ? '已保存到数据库。' : '保存失败：' + (res.data.error ?? res.status);
