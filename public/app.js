@@ -236,9 +236,17 @@ async function renderRecycle() {
     b.addEventListener('click', (e) => { e.stopPropagation(); purgeJob(b.dataset.purge); }));
   const empty = view.querySelector('#empty-bin');
   if (empty) empty.addEventListener('click', () => {
-    if (!confirm(`确定彻底删除回收站中的 ${items.length} 个任务？将同时清理其媒体文件，不可恢复。`)) return;
+    if (!hardConfirm('clear', `彻底删除回收站中的 ${items.length} 个任务及全部媒体`)) return;
     Promise.all(items.map((j) => api(`/api/jobs/${j.id}/purge`, { method: 'POST', body: '{}' }))).then(renderRecycle);
   });
+}
+
+/** 二次确认：先弹确认框，再要求输入关键词「删除」/「清空」才算通过（防误触不可恢复操作） */
+function hardConfirm(verb, what) {
+  const keyword = verb === 'clear' ? '清空' : '删除';
+  if (!confirm(`${what}，此操作不可恢复。是否继续？`)) return false;
+  const input = prompt(`请在下框输入「${keyword}」以确认${what}。`);
+  return input === keyword;
 }
 
 function recycleItemHtml(job) {
@@ -264,7 +272,7 @@ async function restoreJob(id) {
 }
 
 async function purgeJob(id) {
-  if (!confirm('彻底删除此任务？将同时清理其媒体文件，不可恢复。')) return;
+  if (!hardConfirm('delete', '彻底删除此任务及全部关联内容')) return;
   const res = await api(`/api/jobs/${id}/purge`, { method: 'POST', body: '{}' });
   if (!res.ok) { alert(res.data.error ?? '删除失败'); return; }
   renderRecycle();
