@@ -24,7 +24,17 @@ async function api(path, opts = {}) {
   if (ACCESS_KEY) headers.authorization = `Bearer ${ACCESS_KEY}`;
   const res = await fetch(path, { ...opts, headers });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && !path.startsWith('/api/auth')) forceLogout('登录已失效，请重新输入访问密钥');
   return { ok: res.ok, status: res.status, data };
+}
+
+function forceLogout(msg) {
+  sessionStorage.removeItem('app_access_key');
+  if (msg) {
+    try { alert(msg); } catch (_) { /* ignore */ }
+  }
+  location.hash = '#/dashboard';
+  location.reload();
 }
 
 function esc(s) {
@@ -264,13 +274,28 @@ function renderNew() {
 
   const files = $('#person-files');
   files.addEventListener('change', async () => {
-    for (const file of files.files) {
+    const errBox = $('#upload-error');
+    if (errBox) errBox.remove();
+    const pending = [...files.files];
+    for (const file of pending) {
       const b64 = await readAsDataURL(file);
       const res = await api('/api/upload', {
         method: 'POST',
         body: JSON.stringify({ fileName: file.name, contentType: file.type, data: b64 }),
       });
-      if (res.ok && res.data.ref) newJobState.personRefs.push(res.data.ref);
+      if (res.ok && res.data.ref) {
+        newJobState.personRefs.push(res.data.ref);
+      } else {
+        if (res.status === 401) {
+          forceLogout('登录已失效，请重新输入访问密钥');
+          return;
+        }
+        const err = document.createElement('div');
+        err.id = 'upload-error';
+        err.className = 'msg err';
+        err.textContent = `「${file.name}」上传失败：${res.data.error || '服务端错误'}`;
+        $('#person-thumbs').parentElement.appendChild(err);
+      }
     }
     renderThumbs();
     files.value = '';
