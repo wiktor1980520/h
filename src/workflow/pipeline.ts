@@ -59,12 +59,17 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
       return result;
     });
 
-    // 2. 输入落 R2（人物图 + 商品图）
+    // 2. 输入落 R2（人物图 + 商品图）——已上传的 R2 对象直接复用 key，url 才抓取
     const inputs = await step.do('ingest inputs to R2', async () => {
       const current = await this.requireJob(store, jobId);
-      const personRef = await media.ingestFromURL(jobId, 'person', current.personImage.value);
-      const garmentSrc = parsed?.garmentImage?.value ?? current.garment.value;
-      const garmentRef = await media.ingestFromURL(jobId, 'garment', garmentSrc);
+      const personRef =
+        current.personImage.kind === 'r2'
+          ? current.personImage
+          : await media.ingestFromURL(jobId, 'person', current.personImage.value);
+      const garmentRef =
+        parsed?.garmentImage?.kind === 'r2' || current.garment.kind === 'r2'
+          ? (parsed?.garmentImage ?? current.garment)
+          : await media.ingestFromURL(jobId, 'garment', parsed?.garmentImage?.value ?? current.garment.value);
       if (!current.parsed) current.parsed = {};
       current.parsed.garmentImage = garmentRef;
       current.personImage = personRef;
