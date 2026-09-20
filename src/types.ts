@@ -13,7 +13,8 @@ export type Stage =
   | 'tryon'      // 虚拟试穿：人物图 × 商品图 → 试穿结果图
   | 'video'      // 图生视频：试穿结果图 → 短视频
   | 'publish'    // 多平台发布
-  | 'done';
+  | 'done'
+  | 'error';     // 流程级失败
 
 export type Platform = 'douyin' | 'xiaohongshu' | 'weixin';
 

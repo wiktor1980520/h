@@ -29,6 +29,24 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
     const { jobId } = event.payload;
     const store = new JobStore(this.env);
     const media = new MediaStore(this.env, this.env.R2_PUBLIC_BASE);
+    try {
+      await this.main(event, step, store, media);
+      return { jobId, status: 'succeeded' };
+    } catch (e) {
+      // 任何步骤最终失败：把任务落为 failed，避免任务永远停留在 running 假象
+      const job = await store.get(jobId).catch(() => null);
+      if (job && job.status !== 'canceled') {
+        job.status = 'failed';
+        job.error = e instanceof Error ? e.message : String(e);
+        pushLog(job, 'error', 'error', `流程失败: ${job.error}`);
+        await store.save(job).catch(() => {});
+      }
+      throw e;
+    }
+  }
+
+  private async main(event: WfEvent, step: Step, store: JobStore, media: MediaStore): Promise<void> {
+    const { jobId } = event.payload;
     // 第三方 key 以数据库配置优先，env 兜底
     const cfg = await overlayConfig(this.env);
 
@@ -177,8 +195,6 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
       pushLog(current, 'done', 'info', '全部完成');
       await store.save(current);
     });
-
-    return { jobId, status: 'succeeded' };
   }
 
   private buildRegistry(media: MediaStore, cfg: Env): PublisherRegistry {

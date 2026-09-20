@@ -77,7 +77,7 @@ export class MediaStore {
   }
 
   async getPublicURL(key: string): Promise<string> {
-    if (this.publicBase) return `${this.publicBase}/${key}`;
+    if (this.publicBase) return `${this.publicBase}/media/${key}`;
     // 无自定义域名时，回源由 Worker 路由 /media/<key> 代为流式返回
     return `/media/${key}`;
   }

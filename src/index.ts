@@ -51,6 +51,7 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
   if (p === '/api/auth/status') {
     return json({ enabled: !!env.APP_ACCESS_KEY });
   }
+
   if (p === '/api/auth/login' && request.method === 'POST') {
     if (!env.APP_ACCESS_KEY) return json({ ok: true, enabled: false, note: '系统未配置访问密钥' });
     const body = (await request.json().catch(() => null)) as { key?: string } | null;
@@ -62,6 +63,53 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
   // 配置了 APP_ACCESS_KEY 时，除 auth 外的所有 /api/* 都需携带访问密钥
   if (env.APP_ACCESS_KEY && !isAuthed(request, env.APP_ACCESS_KEY)) {
     return json({ error: 'unauthorized: 需要访问密钥' }, 401);
+  }
+
+  // 诊断：用真实配置(密钥/模型/端点) + 真实任务图片地址，完整跑一次试穿提交
+  if (p === '/api/diag/tryon' && request.method === 'POST') {
+    const body = (await request.json().catch(() => null)) as { jobId?: string } | null;
+    if (!body?.jobId) return json({ error: '需要 jobId' }, 400);
+    try {
+      const cfg = await overlayConfig(env);
+      const job = await store.get(body.jobId);
+      if (!job) return json({ error: '任务不存在' }, 404);
+      const m = new MediaStore(env, env.R2_PUBLIC_BASE);
+      const personURL = await m.getPublicURL(job.personImage.value);
+      const garmentURL = await m.getPublicURL(job.parsed?.garmentImage?.value ?? job.garment.value);
+      const base = cfg.IMAGE_TO_VIDEO_ENDPOINT ?? 'https://dashscope.aliyuncs.com';
+      const target = `${base.replace(/\/+$/, '')}/api/v1/services/aigc/image2image/image-synthesis`;
+      const started = Date.now();
+      const input: Record<string, string> = { person_image_url: personURL };
+      input[job.parsed?.category === 'bottom' ? 'bottom_garment_url' : 'top_garment_url'] = garmentURL;
+      const resp = await fetch(target, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${cfg.DASHSCOPE_API_KEY ?? ''}`,
+          'x-dashscope-async': 'enable',
+        },
+        body: JSON.stringify({
+          model: cfg.TRYON_MODEL ?? 'aitryon',
+          input,
+          parameters: { resolution: -1, restore_face: true },
+        }),
+        signal: AbortSignal.timeout(25_000),
+      });
+      const text = await resp.text();
+      return json({
+        ok: true,
+        target,
+        model: cfg.TRYON_MODEL ?? 'aitryon',
+        keyLen: (cfg.DASHSCOPE_API_KEY ?? '').length,
+        personURL,
+        garmentURL,
+        http: resp.status,
+        ms: Date.now() - started,
+        body: text.slice(0, 600),
+      });
+    } catch (e) {
+      return json({ ok: false, ms: 0, error: String(e) }, 502);
+    }
   }
 
   if (p === '/api/platforms' && request.method === 'GET') {
