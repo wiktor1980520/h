@@ -47,6 +47,23 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
   const store = new JobStore(env);
   const p = url.pathname.replace(/\/+$/, '') || '/';
 
+  // 登录状态与登录接口无需鉴权
+  if (p === '/api/auth/status') {
+    return json({ enabled: !!env.APP_ACCESS_KEY });
+  }
+  if (p === '/api/auth/login' && request.method === 'POST') {
+    if (!env.APP_ACCESS_KEY) return json({ ok: true, enabled: false, note: '系统未配置访问密钥' });
+    const body = (await request.json().catch(() => null)) as { key?: string } | null;
+    return body?.key && body.key === env.APP_ACCESS_KEY
+      ? json({ ok: true, enabled: true })
+      : json({ error: '密钥不正确' }, 401);
+  }
+
+  // 配置了 APP_ACCESS_KEY 时，除 auth 外的所有 /api/* 都需携带访问密钥
+  if (env.APP_ACCESS_KEY && !isAuthed(request, env.APP_ACCESS_KEY)) {
+    return json({ error: 'unauthorized: 需要访问密钥' }, 401);
+  }
+
   if (p === '/api/platforms' && request.method === 'GET') {
     return json({ platforms: await listPlatforms(env) });
   }
@@ -346,6 +363,11 @@ function json(data: unknown, status = 200): Response {
 
 function notFound(): Response {
   return json({ error: 'not found' }, 404);
+}
+
+function isAuthed(request: Request, key: string): boolean {
+  const auth = request.headers.get('authorization') ?? '';
+  return auth === `Bearer ${key}`;
 }
 
 function clampInt(v: string | null, def: number, min: number, max: number): number {

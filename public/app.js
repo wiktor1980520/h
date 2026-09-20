@@ -3,6 +3,7 @@ const $ = (sel, root = document) => root.querySelector(sel);
 
 const STAGE_ORDER = ['init', 'parse', 'tryon', 'video', 'publish', 'done'];
 const PLATFORM_LABEL = { douyin: '抖音', xiaohongshu: '小红书', weixin: '视频号' };
+const ACCESS_KEY = sessionStorage.getItem('app_access_key') || '';
 
 const CONFIG_FIELDS = [
   ['DASHSCOPE_API_KEY', '百炼/DashScope API Key'],
@@ -19,10 +20,9 @@ const CONFIG_FIELDS = [
 ];
 
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    headers: { 'content-type': 'application/json' },
-    ...opts,
-  });
+  const headers = { 'content-type': 'application/json', ...(opts.headers || {}) };
+  if (ACCESS_KEY) headers.authorization = `Bearer ${ACCESS_KEY}`;
+  const res = await fetch(path, { ...opts, headers });
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };
 }
@@ -49,9 +49,71 @@ const routes = {
 };
 
 window.addEventListener('hashchange', navigate);
-navigate();
+bootstrap();
+
+async function bootstrap() {
+  const auth = await api('/api/auth/status');
+  const enabled = !!auth.data.enabled;
+  if (enabled) document.body.classList.add('authed');
+  renderAuthBorder(enabled);
+  if (enabled && !ACCESS_KEY) {
+    renderLogin();
+  } else {
+    navigate();
+  }
+}
+
+function renderAuthBorder(enabled) {
+  const bar = $('#auth-bar');
+  if (bar) bar.remove();
+  if (!enabled) return;
+  const div = document.createElement('div');
+  div.id = 'auth-bar';
+  div.className = 'auth-bar';
+  const btn = document.createElement('button');
+  btn.className = 'btn sm ghost';
+  btn.textContent = ACCESS_KEY ? '登出' : '未登录';
+  btn.addEventListener('click', () => {
+    sessionStorage.removeItem('app_access_key');
+    location.reload();
+  });
+  div.append('已使用密钥访问', btn);
+  $('nav.topbar')?.append(div);
+}
+
+function renderLogin() {
+  const view = $('#view');
+  view.innerHTML = `
+    <section class="login-wrap">
+      <form id="login-form" class="card login-card">
+        <h1>🔐 请输入访问密钥</h1>
+        <p class="sub">密钥配置在 Cloudflare 参数（APP_ACCESS_KEY）中，验证通过后才能使用系统</p>
+        <input type="password" id="login-key" autocomplete="current-password" placeholder="访问密钥" />
+        <button type="submit" class="btn primary">进入</button>
+        <div id="login-msg" class="msg"></div>
+      </form>
+    </section>`;
+  $('#login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = $('#login-msg');
+    msg.className = 'msg';
+    msg.textContent = '验证中…';
+    const res = await api('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ key: $('#login-key').value }),
+    });
+    if (!res.ok) {
+      msg.className = 'msg err';
+      msg.textContent = res.data.error || '验证失败';
+      return;
+    }
+    sessionStorage.setItem('app_access_key', $('#login-key').value);
+    location.reload();
+  });
+}
 
 function navigate() {
+  if (document.body.classList.contains('authed') && !ACCESS_KEY) return;
   const hash = (location.hash || '#/dashboard').replace(/^#/, '');
   const [path, arg] = hash.slice(1).split('/');
   for (const a of document.querySelectorAll('[data-nav]')) {

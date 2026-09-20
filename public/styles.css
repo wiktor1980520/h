@@ -1,3 +1,13 @@
+.auth-bar { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.login-wrap { display: grid; place-items: center; min-height: 60vh; }
+.login-card { width: 100%; max-width: 400px; text-align: center; padding: 32px; }
+.login-card h1 { font-size: 20px; margin-bottom: 6px; }
+.login-card input[type="password"] {
+  width: 100%; margin: 14px 0; background: var(--card2); border: 1px solid var(--line);
+  color: var(--text); border-radius: 10px; padding: 11px 12px; font-size: 14px; text-align: center;
+}
+.login-card .btn { width: 100%; }
+
 /* styles.css — AI 换装工作室 */
 * { box-sizing: border-box; }
 :root {
