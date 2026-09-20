@@ -361,10 +361,11 @@ function renderNew() {
     if (errBox) errBox.remove();
     const pending = [...files.files];
     for (const file of pending) {
-      const b64 = await readAsDataURL(file);
+      // 先压缩再上传：百炼试穿接口要求图片 ≤5MB，手机原图常超限
+      const b64 = await compressImageFile(file);
       const res = await api('/api/upload', {
         method: 'POST',
-        body: JSON.stringify({ fileName: file.name, contentType: file.type, data: b64 }),
+        body: JSON.stringify({ fileName: file.name, contentType: 'image/jpeg', data: b64 }),
       });
       if (res.ok && res.data.ref) {
         newJobState.personRefs.push(res.data.ref);
@@ -678,6 +679,33 @@ function readAsDataURL(file) {
     r.onerror = reject;
     r.readAsDataURL(file);
   });
+}
+
+// 压缩图片为 JPEG dataURL：最长边 ≤1600px、质量 0.85，确保试穿接口图片 ≤5MB
+async function compressImageFile(file) {
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  try {
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = url;
+    });
+    const MAX = 1600;
+    let { width, height } = img;
+    if (width > MAX || height > MAX) {
+      const scale = Math.min(MAX / width, MAX / height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 // 挂全局，供 hashchange 之前的首个渲染使用
