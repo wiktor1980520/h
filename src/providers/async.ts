@@ -61,7 +61,12 @@ export class DashScopeAsyncClient implements AsyncInferClient {
     const resp = await fetch(`${trimSlash(this.baseUrl)}/api/v1/tasks/${taskId}`, {
       headers: { authorization: `Bearer ${this.apiKey}` },
     });
-    const json = (await resp.json().catch(() => ({}))) as DashScopeTask;
+    const text = await resp.text();
+    if (!resp.ok) {
+      // 非 2xx：立即抛出，避免把错误当 PENDING 无限轮询导致任务假卡住
+      throw new Error(`任务查询失败 HTTP ${resp.status}: ${text.slice(0, 300)}`);
+    }
+    const json = JSON.parse(text) as DashScopeTask;
     const st = (json.output?.task_status ?? 'PENDING').toUpperCase();
     const url = json.output?.results?.find((r) => r.url)?.url;
     if (st === 'FAILED') return { status: 'FAILED', error: json.output?.message ?? '任务失败' };

@@ -19,7 +19,7 @@ export interface VtonProvider {
 }
 
 /** 试穿过程中的可观测回调（用于把轮询状态写入任务日志） */
-export type TryOnPollFn = (status: string, attempt: number) => void;
+export type TryOnPollFn = (status: string, attempt: number) => void | Promise<void>;
 
 /** 外部托管试穿：百炼 OutfitAnyone / IDM 托管，DashScope 异步任务 */
 export class DashScopeVton implements VtonProvider {
@@ -48,6 +48,7 @@ export class DashScopeVton implements VtonProvider {
       input,
       { parameters: { resolution: -1, restore_face: true } },
     );
+    this.onPoll?.(`已提交试穿任务 task_id=${taskId}`, 0);
     const url = await pollUntilDone(this.client, taskId, 60, this.onPoll);
     return downloadBytes(url);
   }
@@ -81,7 +82,7 @@ async function pollUntilDone(
   let out: string | null = null;
   for (let i = 0; i < maxAttempts && !out; i++) {
     const r = await client.pollTask(taskId);
-    if (!out) onPoll?.(`task_status=${r.status}`, i + 1);
+    if (!out) await onPoll?.(`task_status=${r.status}`, i + 1);
     if (r.status === 'FAILED') throw new Error(`试穿失败: ${r.error}`);
     if (r.status === 'SUCCEEDED' && r.outputUrl) out = r.outputUrl;
     else await sleepMs(4000);
