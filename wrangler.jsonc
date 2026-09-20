@@ -46,7 +46,7 @@
     {
       "binding": "DB",
       "database_name": "huangtools-db",
-      "database_id": "put-your-database-id-here",
+      "database_id": "edafde69-5e30-43d0-94f5-650fdf477236",
       "migrations_dir": "migrations"
     }
   ],
