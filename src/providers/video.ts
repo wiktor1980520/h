@@ -29,8 +29,8 @@ export class DashScopeVideo implements VideoGenProvider {
     this.name = kind === 'kling' ? 'kling-v3' : 'seedance';
     const base = env.IMAGE_TO_VIDEO_ENDPOINT ?? 'https://dashscope.aliyuncs.com';
     const model = (kind === 'kling' ? env.VIDEO_MODEL : undefined) ?? (kind === 'kling' ? 'kling-v3' : 'seedance-02');
-    // DashScope 图生视频服务路径沿用多模态聚合形貌；实际以目标模型文档为准
-    this.client = new DashScopeAsyncClient(this.name, base, env.DASHSCOPE_API_KEY ?? '', model, 'image2video');
+    // DashScope 图生视频走 /image2video/<model>；模型 id 需与配置的 VIDEO_MODEL 一致
+    this.client = new DashScopeAsyncClient(this.name, base, env.DASHSCOPE_API_KEY ?? '', model, `image2video/${model}`);
     this.media = media;
   }
 

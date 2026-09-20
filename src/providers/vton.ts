@@ -27,7 +27,7 @@ export class DashScopeVton implements VtonProvider {
   constructor(env: Env, media: MediaStore) {
     const base = env.IMAGE_TO_VIDEO_ENDPOINT ?? 'https://dashscope.aliyuncs.com';
     const model = env.TRYON_MODEL ?? 'aitryon';
-    this.client = new DashScopeAsyncClient('dashscope-vton', base, env.DASHSCOPE_API_KEY ?? '', model, 'outfit-anyone');
+    this.client = new DashScopeAsyncClient('dashscope-vton', base, env.DASHSCOPE_API_KEY ?? '', model, 'image2image/image-synthesis');
     this.media = media;
   }
 
@@ -35,15 +35,17 @@ export class DashScopeVton implements VtonProvider {
     if (!req.personImage || req.personImage.kind !== 'r2' || !req.garmentImage || req.garmentImage.kind !== 'r2') {
       throw new Error('试穿需要 R2 中的人物图与商品图');
     }
-    const person = await this.media.dataURL(req.personImage.value, 'image/png');
-    const garment = await this.media.dataURL(req.garmentImage.value, 'image/png');
-    // DashScope aitryon 输入模板：human_image_url / garment_image_url（按模型调整）
+    // aitryon 要求图片为公网 HTTP/HTTPS 地址，经 worker /media/ 绝对地址传入
+    const personURL = await this.media.getPublicURL(req.personImage.value);
+    const garmentURL = await this.media.getPublicURL(req.garmentImage.value);
+    const input: Record<string, string> = { person_image_url: personURL };
+    if (req.category === 'bottom') input.bottom_garment_url = garmentURL;
+    else input.top_garment_url = garmentURL; // 上装 / 连衣裙(通装) 走 top_garment_url
     const { taskId } = await this.client.submitTask({
-      human_image_url: person,
-      garment_image_url: garment,
-      prompt: req.prompt ?? '',
+      ...input,
+      parameters: { resolution: -1, restore_face: true },
     });
-    const url = await pollUntilDone(this.client, taskId, 40);
+    const url = await pollUntilDone(this.client, taskId, 60);
     return downloadBytes(url);
   }
 }

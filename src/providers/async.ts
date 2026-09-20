@@ -37,7 +37,7 @@ export class DashScopeAsyncClient implements AsyncInferClient {
   ) {}
 
   async submitTask(payload: unknown): Promise<AsyncSubmitResult> {
-    const resp = await fetch(`${trimSlash(this.baseUrl)}/api/v1/services/aigc/text2image/${this.servicePath}`, {
+    const resp = await fetch(`${trimSlash(this.baseUrl)}/api/v1/services/aigc/${this.servicePath}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

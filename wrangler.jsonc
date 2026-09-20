@@ -26,7 +26,8 @@
     "VIDEO_TTL_DAYS": 30,
     "DEFAULT_RESOLUTION": "1080p",
     "DEFAULT_DURATION": 15,
-    "PUBLISH_ON": "douyin"
+    "PUBLISH_ON": "douyin",
+    "R2_PUBLIC_BASE": "https://huangtools.wiktor1980520.workers.dev"
   },
 
   // Workers AI 绑定（“模型环节可选 Workers AI 评估”路径）。无需额外配置即可启用。
