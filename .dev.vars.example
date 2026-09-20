@@ -1,0 +1,27 @@
+# 复制为 .dev.vars 并在本地 `wrangler dev` 中使用；远端用 `wrangler secret put <KEY>`。
+# ===== 必填：模型与服务提供方（外部 API） =====
+# 图形/语言模型容器服务（可灵 / 即梦 / 百炼 统一走 DashScope 风格异步提交 + 轮询）
+DASHSCOPE_API_KEY=sk-your-key
+TRYON_MODEL=aitryon            # 试穿模型（百炼 OutfitAnyone / IDM-VTON 托管名）
+VIDEO_MODEL=kling-v3           # 图生视频（可灵 kling-v3 / 即梦 seedance-02）
+IMAGE_TO_VIDEO_ENDPOINT=https://dashscope.aliyuncs.com
+# 备用：直接接即梦/可灵官方 OpenAI 兼容端点时可覆盖
+KOLORS_OR_SEEDANCE_API_KEY=
+
+# ===== 商品链接解析（可选，防误伤 UA） =====
+PARSER_UA=Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148
+R2_PUBLIC_BASE=
+
+# ===== 发布平台凭证（按需） =====
+DOUYIN_CLIENT_KEY=
+DOUYIN_CLIENT_SECRET=
+DOUYIN_ACCESS_TOKEN=           # 或放 loop 里用 refresh 刷新
+
+WEIXIN_CHANNELS_APPID=
+WEIXIN_CHANNELS_ACCESS_TOKEN=
+
+XHS_RPA_WEBHOOK=               # 小红书无开放 API：经 Webhook 桥接到本地 RPA 服务
+
+# ===== Workers AI 评估路径（可选，启用后优先级高于外部试穿/分类） =====
+USE_WORKERS_AI_LLM=false
+WORKERS_AI_LLM=@cf/meta/llama-3.1-8b-instruct

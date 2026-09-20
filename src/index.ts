@@ -1,0 +1,200 @@
+// index.ts — Worker 入口：静态资源 + REST API + R2 媒体回源
+import type { Env } from './env';
+import type { Job } from './types';
+import { emptyJob, newJobId } from './types';
+import { JobStore } from './store/d1';
+
+export { HuangtoolsPipelineWorkflow } from './workflow/pipeline';
+
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
+  'access-control-allow-headers': 'content-type,authorization',
+};
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
+
+    // 静态资源（前端界面）优先
+    const asset = await env.ASSETS.fetch(request);
+    if (asset.status !== 404) return asset;
+
+    // R2 媒体回源：/media/<key>
+    if (url.pathname.startsWith('/media/')) {
+      return serveMedia(env, decodeURIComponent(url.pathname.slice('/media/'.length)));
+    }
+
+    // REST API
+    return routeApi(request, url, env);
+  },
+};
+
+async function routeApi(request: Request, url: URL, env: Env): Promise<Response> {
+  const store = new JobStore(env);
+  const p = url.pathname.replace(/\/+$/, '') || '/';
+
+  if (p === '/api/platforms' && request.method === 'GET') {
+    return json({ platforms: await listPlatforms(env) });
+  }
+
+  if (p === '/api/settings') {
+    return json({
+      resolutions: ['480p', '720p', '1080p'],
+      durations: [5, 10, 15],
+      publishOn: (env.PUBLISH_ON ?? 'douyin').split(','),
+      workersAiEnabled: env.DASHSCOPE_API_KEY ? false : true,
+    });
+  }
+
+  if (p === '/api/jobs' && request.method === 'POST') {
+    return createJob(request, env, store);
+  }
+
+  if (p === '/api/jobs' && request.method === 'GET') {
+    const status = url.searchParams.get('status') as Job['status'] | null;
+    const cursor = url.searchParams.get('cursor') ?? undefined;
+    const limit = clampInt(url.searchParams.get('limit'), 50, 1, 100);
+    const { items, cursor: next } = await store.list(status ?? undefined, limit, cursor);
+    return json({ items, cursor: next ?? null });
+  }
+
+  const jobMatch = /^\/api\/jobs\/([^/]+)$/.exec(p);
+  if (jobMatch) {
+    const id = jobMatch[1];
+    if (request.method === 'GET') {
+      const job = await store.get(id);
+      return job ? json(job) : notFound();
+    }
+    if (request.method === 'DELETE') {
+      await store.delete(id);
+      return json({ ok: true });
+    }
+  }
+
+  if (p.endsWith('/cancel') && request.method === 'POST') {
+    const id = p.split('/').filter(Boolean).at(-2);
+    if (id) return cancelJob(id, env, store);
+  }
+
+  if (p === '/v1/webhooks/xhs' && request.method === 'POST') {
+    return xhsCallback(request, env, store);
+  }
+
+  return json({ error: 'not found' }, 404);
+}
+
+async function createJob(request: Request, env: Env, store: JobStore): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as Partial<CreateJobBody>;
+  if (!body.personImageURL || !body.garmentValue) {
+    return json({ error: 'personImageURL 与 garmentValue 为必填' }, 400);
+  }
+  const id = newJobId();
+  const job = emptyJob(id, {
+    personImage: { kind: 'url', value: body.personImageURL },
+    garment: {
+      kind: 'url',
+      value: body.garmentValue,
+      source: body.garmentType === 'link' ? 'link' : 'image',
+    },
+    publish: (body.publish ?? []).map((p) => ({ platform: p, status: 'pending' })),
+    options: {
+      resolution: (body.resolution ?? env.DEFAULT_RESOLUTION) as Job['options']['resolution'],
+      duration: body.duration ?? parseInt(env.DEFAULT_DURATION || '15', 10),
+      withSound: body.withSound ?? true,
+    },
+  });
+  await store.create(job);
+
+  // 投递到多步骤 Workflow
+  const instance = await env.PIPELINE_WORKFLOW.create({ id: crypto.randomUUID(), params: { jobId: id } });
+  job.workflowInstanceId = instance.id;
+  await store.save(job);
+
+  return json({ job, workflowInstanceId: instance.id }, 201);
+}
+
+async function cancelJob(id: string, env: Env, store: JobStore): Promise<Response> {
+  const job = await store.get(id);
+  if (!job) return notFound();
+  job.status = 'canceled';
+  job.updatedAt = new Date().toISOString();
+  await store.save(job);
+  if (job.workflowInstanceId) {
+    const instance = await env.PIPELINE_WORKFLOW.get(job.workflowInstanceId);
+    await instance?.terminate().catch(() => {});
+  }
+  return json({ ok: true });
+}
+
+async function xhsCallback(request: Request, env: Env, store: JobStore): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    jobId?: string;
+    ok?: boolean;
+    url?: string;
+    externalId?: string;
+    error?: string;
+  };
+  if (!body.jobId) return json({ error: 'jobId 必填' }, 400);
+  const job = await store.get(body.jobId);
+  if (job) {
+    const t = job.publish.find((x) => x.platform === 'xiaohongshu');
+    if (t) {
+      t.status = body.ok ? 'published' : 'failed';
+      t.url = body.url;
+      t.externalId = body.externalId;
+      t.error = body.error;
+      t.publishedAt = body.ok ? new Date().toISOString() : t.publishedAt;
+      await store.save(job);
+    }
+  }
+  return json({ ok: true });
+}
+
+async function serveMedia(env: Env, key: string): Promise<Response> {
+  const obj = await env.MEDIA_BUCKET.get(key);
+  if (!obj) return new Response('Not Found', { status: 404 });
+  const headers = new Headers();
+  obj.writeHttpMetadata(headers);
+  headers.set('etag', obj.httpEtag);
+  headers.set('cache-control', `public, max-age=${env.VIDEO_TTL_DAYS ? parseInt(env.VIDEO_TTL_DAYS, 10) * 86400 : 2592000}`);
+  headers.set('access-control-allow-origin', '*');
+  return new Response(obj.body, { headers });
+}
+
+async function listPlatforms(env: Env): Promise<Array<{ platform: string; ready: boolean; note?: string }>> {
+  const out: Array<{ platform: string; ready: boolean; note?: string }> = [];
+  out.push({ platform: 'douyin', ready: !!env.DOUYIN_ACCESS_TOKEN, note: env.DOUYIN_ACCESS_TOKEN ? undefined : '缺少 DOUYIN_ACCESS_TOKEN' });
+  out.push({ platform: 'weixin', ready: !!env.WEIXIN_CHANNELS_ACCESS_TOKEN, note: env.WEIXIN_CHANNELS_ACCESS_TOKEN ? undefined : '缺少 WEIXIN_CHANNELS_ACCESS_TOKEN' });
+  out.push({ platform: 'xiaohongshu', ready: !!env.XHS_RPA_WEBHOOK, note: env.XHS_RPA_WEBHOOK ? undefined : '需 XHS_RPA_WEBHOOK（本地 RPA 桥）' });
+  return out;
+}
+
+interface CreateJobBody {
+  personImageURL?: string;
+  garmentType?: 'image' | 'link';
+  garmentValue?: string;
+  resolution?: '480p' | '720p' | '1080p';
+  duration?: number;
+  withSound?: boolean;
+  publish?: Array<Job['publish'][number]['platform']>;
+}
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8', ...CORS },
+  });
+}
+
+function notFound(): Response {
+  return json({ error: 'not found' }, 404);
+}
+
+function clampInt(v: string | null, def: number, min: number, max: number): number {
+  const n = v ? parseInt(v, 10) : def;
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+}
+
+export type { Env };

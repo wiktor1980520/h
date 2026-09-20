@@ -1,0 +1,24 @@
+{
+  "name": "huangtools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI 女装试穿短视频生成 · Cloudflare 全托管（Workers + D1 + R2 + Workflows + Workers AI）",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev --remote",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate": "wrangler d1 migrations apply DB --remote",
+    "wf:instances": "wrangler workflows instances list huangtools-pipeline"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.8",
+    "@cloudflare/workers-types": "^5.20260918.1",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5",
+    "wrangler": "^4.0.0"
+  }
+}

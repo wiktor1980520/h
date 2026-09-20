@@ -1,0 +1,61 @@
+// wrangler.jsonc — Cloudflare Worker 工程配置（huangtools）
+// 说明：
+//   - 前端用 Workers Static Assets（./public）与 API 由同一个 Worker 提供
+//   - D1 / R2 / Workflows / Workers AI 均为绑定，部署前补齐 resource id
+//   - 敏感配置放在 .dev.vars（本地）与 `wrangler secret put`（远端）
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "huangtools",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0
+  },
+
+  "vars": {
+    "WEBHOOK_BASE": "",
+    "PARSE_TIMEOUT_MS": 25000,
+    "VIDEO_TTL_DAYS": 30,
+    "DEFAULT_RESOLUTION": "1080p",
+    "DEFAULT_DURATION": 15,
+    "PUBLISH_ON": "douyin"
+  },
+
+  // Workers AI 绑定（“模型环节可选 Workers AI 评估”路径）。无需额外配置即可启用。
+  "ai": { "binding": "AI" },
+
+  // 多步骤任务编排 Workflow
+  "workflows": [
+    {
+      "name": "huangtools-pipeline",
+      "binding": "PIPELINE_WORKFLOW",
+      "class_name": "HuangtoolsPipelineWorkflow"
+    }
+  ],
+
+  // 关系型任务库（= 本地数据库的云端等价物）
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "huangtools-db",
+      "database_id": "put-your-database-id-here",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // 对象存储：人物图 / 商品图 / 结果图 / 成品视频
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "huangtools-media"
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+// types.ts — 领域模型（任务的完整生命周期状态）
+
+export type JobStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'canceled';
+
+export type Stage =
+  | 'init'
+  | 'parse'      // 从电商链接抽取商品图
+  | 'tryon'      // 虚拟试穿：人物图 × 商品图 → 试穿结果图
+  | 'video'      // 图生视频：试穿结果图 → 短视频
+  | 'publish'    // 多平台发布
+  | 'done';
+
+export type Platform = 'douyin' | 'xiaohongshu' | 'weixin';
+
+export type Resolution = '480p' | '720p' | '1080p';
+
+export interface VideoOptions {
+  resolution: Resolution;
+  duration: number; // 秒
+  withSound: boolean;
+}
+
+export interface MediaRef {
+  kind: 'url' | 'r2';
+  value: string; // url 原文 或 r2 key
+}
+
+/** 商品来源：image=直接给图 URL；link=给定电商链接待解析 */
+export interface GarmentSource extends MediaRef {
+  source?: 'image' | 'link';
+}
+
+export interface PublishTarget {
+  platform: Platform;
+  status: 'pending' | 'published' | 'failed';
+  externalId?: string;
+  url?: string;
+  error?: string;
+  publishedAt?: string;
+}
+
+export interface ParsedGarment {
+  garmentImage?: MediaRef;
+  title?: string;
+  price?: string;
+  category?: 'top' | 'bottom' | 'dress';
+  from?: string;
+}
+
+export interface TryOnResult {
+  output?: MediaRef;
+  provider?: string;
+}
+
+export interface VideoResult {
+  output?: MediaRef;
+  provider?: string;
+  coverImage?: MediaRef;
+}
+
+export interface LogEntry {
+  ts: string;
+  stage: Stage;
+  level: 'info' | 'warn' | 'error';
+  msg: string;
+}
+
+export interface Job {
+  id: string;
+  status: JobStatus;
+  stage: Stage;
+  // 输入
+  personImage: MediaRef;
+  garment: GarmentSource; // image 直给 | link 需解析
+  // 各阶段产物
+  parsed?: ParsedGarment;
+  tryOn?: TryOnResult;
+  video?: VideoResult;
+  publish: PublishTarget[];
+  options: VideoOptions;
+  // 元信息
+  workflowInstanceId?: string;
+  error?: string;
+  logs: LogEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function newJobId(): string {
+  return crypto.randomUUID();
+}
+
+export function emptyJob(id: string, init: Partial<Job>): Job {
+  return {
+    id,
+    status: 'queued',
+    stage: 'init',
+    personImage: { kind: 'url', value: '' },
+    garment: { kind: 'url', value: '' },
+    publish: [],
+    options: { resolution: '1080p', duration: 15, withSound: true },
+    logs: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...init,
+  };
+}
+
+export function pushLog(job: Job, stage: Stage, level: LogEntry['level'], msg: string) {
+  job.logs.push({ ts: new Date().toISOString(), stage, level, msg });
+  if (job.logs.length > 200) job.logs = job.logs.slice(-200);
+  job.updatedAt = new Date().toISOString();
+}

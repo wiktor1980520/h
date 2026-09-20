@@ -1,0 +1,40 @@
+// Env：Cloudflare 绑定的类型集合（与 wrangler.jsonc 对齐）
+export interface Env {
+  DB: D1Database;
+  MEDIA_BUCKET: R2Bucket;
+  ASSETS: Fetcher;
+  AI: Ai;
+
+  PIPELINE_WORKFLOW: Workflow<{ jobId: string }>;
+
+  // ---- vars ----
+  WEBHOOK_BASE: string;
+  PARSE_TIMEOUT_MS: string;
+  VIDEO_TTL_DAYS: string;
+  DEFAULT_RESOLUTION: string;
+  DEFAULT_DURATION: string;
+  PUBLISH_ON: string;
+
+  // ---- secrets（.dev.vars / wrangler secret put）----
+  DASHSCOPE_API_KEY?: string;
+  TRYON_MODEL?: string;
+  VIDEO_MODEL?: string;
+  IMAGE_TO_VIDEO_ENDPOINT?: string;
+  KOLORS_OR_SEEDANCE_API_KEY?: string;
+
+  PARSER_UA?: string;
+  R2_PUBLIC_BASE?: string;
+
+  DOUYIN_CLIENT_KEY?: string;
+  DOUYIN_CLIENT_SECRET?: string;
+  DOUYIN_ACCESS_TOKEN?: string;
+
+  WEIXIN_CHANNELS_APPID?: string;
+  WEIXIN_CHANNELS_ACCESS_TOKEN?: string;
+
+  XHS_RPA_WEBHOOK?: string;
+
+  // ---- Workers AI 评估路径 ----
+  USE_WORKERS_AI_LLM?: string;
+  WORKERS_AI_LLM?: string;
+}
