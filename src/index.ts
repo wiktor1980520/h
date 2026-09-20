@@ -106,7 +106,7 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
       return job ? json(job) : notFound();
     }
     if (request.method === 'DELETE') {
-      await store.delete(id);
+      await deleteJob(id, env, store);
       return json({ ok: true });
     }
   }
@@ -166,6 +166,16 @@ async function createJob(request: Request, env: Env, store: JobStore): Promise<R
   await store.save(job);
 
   return json({ job, workflowInstanceId: instance.id }, 201);
+}
+
+async function deleteJob(id: string, env: Env, store: JobStore): Promise<void> {
+  const job = await store.get(id);
+  if (job?.workflowInstanceId) {
+    const instance = await env.PIPELINE_WORKFLOW.get(job.workflowInstanceId);
+    await instance?.terminate().catch(() => {});
+  }
+  await new MediaStore(env, env.R2_PUBLIC_BASE).deleteByPrefix(id).catch(() => {});
+  await store.delete(id);
 }
 
 async function cancelJob(id: string, env: Env, store: JobStore): Promise<Response> {

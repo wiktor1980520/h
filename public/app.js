@@ -204,7 +204,10 @@ function jobCard(job) {
         <span class="badge ${job.status}">${job.status}</span>
         <div class="sub">${esc(last) || time(job.createdAt)}</div>
       </div>
-      ${canCancel ? `<button class="cancel-quick" data-cancel="${job.id}" title="终止任务">✕</button>` : ''}
+      <div class="item-ops">
+        ${canCancel ? `<button class="cancel-quick" data-cancel="${job.id}" title="终止任务">✕</button>` : ''}
+        <button class="del-quick" data-del="${job.id}" title="删除任务">🗑</button>
+      </div>
     </div>`;
 }
 
@@ -437,6 +440,7 @@ function paintJobDetail(view, job) {
       <div class="hero-actions">
         <span class="badge big ${job.status}">${job.status}</span>
         ${canCancel ? '<button class="btn ghost sm" id="cancel-job">终止任务</button>' : ''}
+        <button class="btn danger sm" id="del-job">删除任务</button>
       </div>
     </section>
     <section class="card">
@@ -465,6 +469,23 @@ function paintJobDetail(view, job) {
   if (pubAll) pubAll.addEventListener('click', () => triggerPublish(job.id));
   const cancelBtn = view.querySelector('#cancel-job');
   if (cancelBtn) cancelBtn.addEventListener('click', () => confirmCancel(job.id));
+  const delBtn = view.querySelector('#del-job');
+  if (delBtn) delBtn.addEventListener('click', () => confirmDelete(job.id));
+}
+
+async function confirmDelete(id) {
+  if (!confirm('确定永久删除此任务？其生成的图片/视频也会一并删除，且不可恢复。')) return;
+  const res = await api(`/api/jobs/${id}`, { method: 'DELETE', body: '{}' });
+  if (!res.ok) {
+    alert(res.data.error ?? '删除失败');
+    return;
+  }
+  const route = (location.hash || '#/dashboard').split('?')[0];
+  if (route === '#/dashboard' || route === '#/jobs') {
+    renderDashboard();
+  } else {
+    location.hash = '#/dashboard';
+  }
 }
 
 async function confirmCancel(id) {
@@ -583,6 +604,13 @@ function readAsDataURL(file) {
 // 挂全局，供 hashchange 之前的首个渲染使用
 document.querySelectorAll('.job-item')?.forEach((el) => el.addEventListener('click', () => (location.hash = `#/job/${el.dataset.id}`)));
 document.addEventListener('click', (e) => {
+  const delBtn = e.target.closest('.del-quick');
+  if (delBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    confirmDelete(delBtn.dataset.del);
+    return;
+  }
   const cancelBtn = e.target.closest('.cancel-quick');
   if (cancelBtn) {
     e.preventDefault();

@@ -58,6 +58,24 @@ export class MediaStore {
     return this.env.MEDIA_BUCKET.get(key);
   }
 
+  /** 删除某个任务前缀下的所有媒体对象（人物图/商品/试穿/视频/封面） */
+  async deleteByPrefix(jobId: string): Promise<number> {
+    const bucket = this.env.MEDIA_BUCKET;
+    const prefix = `jobs/${jobId}/`;
+    let removed = 0;
+    let cursor: string | undefined;
+    do {
+      const list = await bucket.list({ prefix, cursor });
+      const keys = list.objects.map((o) => o.key);
+      if (keys.length) {
+        await bucket.delete(keys);
+        removed += keys.length;
+      }
+      cursor = list.truncated ? list.cursor : undefined;
+    } while (cursor);
+    return removed;
+  }
+
   async getPublicURL(key: string): Promise<string> {
     if (this.publicBase) return `${this.publicBase}/${key}`;
     // 无自定义域名时，回源由 Worker 路由 /media/<key> 代为流式返回
