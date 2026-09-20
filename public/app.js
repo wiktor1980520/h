@@ -195,6 +195,7 @@ function jobCard(job) {
       : first?.value
         ? `<img class="thumb" src="${mediaSrc(first)}" />`
         : '';
+  const canCancel = ['queued', 'running'].includes(job.status);
   return `
     <div class="job-item" data-id="${job.id}">
       ${th}
@@ -203,6 +204,7 @@ function jobCard(job) {
         <span class="badge ${job.status}">${job.status}</span>
         <div class="sub">${esc(last) || time(job.createdAt)}</div>
       </div>
+      ${canCancel ? `<button class="cancel-quick" data-cancel="${job.id}" title="终止任务">✕</button>` : ''}
     </div>`;
 }
 
@@ -472,7 +474,9 @@ async function confirmCancel(id) {
     alert(res.data.error ?? '终止失败');
     return;
   }
-  renderJobDetail(id);
+  const route = (location.hash || '#/dashboard').split('?')[0];
+  if (route === '#/dashboard' || route === '#/jobs') renderDashboard();
+  else renderJobDetail(id);
 }
 
 async function triggerPublish(id, onlyPlatform) {
@@ -579,6 +583,13 @@ function readAsDataURL(file) {
 // 挂全局，供 hashchange 之前的首个渲染使用
 document.querySelectorAll('.job-item')?.forEach((el) => el.addEventListener('click', () => (location.hash = `#/job/${el.dataset.id}`)));
 document.addEventListener('click', (e) => {
+  const cancelBtn = e.target.closest('.cancel-quick');
+  if (cancelBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    confirmCancel(cancelBtn.dataset.cancel);
+    return;
+  }
   const item = e.target.closest('.job-item');
   if (item) location.hash = `#/job/${item.dataset.id}`;
 });
