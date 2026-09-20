@@ -69,6 +69,7 @@ h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
 code { background: rgba(0, 0, 0, 0.05); padding: 1px 6px; border-radius: 6px; font-size: 12px; font-family: ui-monospace, "SF Mono", "Menlo", monospace; color: var(--blue); }
 .loading, .empty { color: var(--text-2); padding: 40px; text-align: center; font-size: 14px; }
 .hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.hero-actions { display: flex; align-items: center; gap: 10px; }
 .back { display: inline-flex; align-items: center; gap: 6px; color: var(--blue); text-decoration: none; font-size: 13px; font-weight: 500; margin-bottom: 14px; transition: opacity 0.15s; }
 .back:hover { opacity: 0.7; }
 

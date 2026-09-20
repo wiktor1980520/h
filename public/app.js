@@ -426,11 +426,16 @@ function paintJobDetail(view, job) {
 
   const prompt = job.video?.prompt;
 
+  const canCancel = ['queued', 'running'].includes(job.status);
+
   view.innerHTML = `
     <a class="back" href="#/dashboard">← 返回看板</a>
     <section class="hero">
       <div><h1>${esc(job.parsed?.title ?? job.id.slice(0, 8))}</h1><p class="sub">${time(job.createdAt)} · ${esc(job.id.slice(0, 8))}</p></div>
-      <span class="badge big ${job.status}">${job.status}</span>
+      <div class="hero-actions">
+        <span class="badge big ${job.status}">${job.status}</span>
+        ${canCancel ? '<button class="btn ghost sm" id="cancel-job">终止任务</button>' : ''}
+      </div>
     </section>
     <section class="card">
       <div class="stage-dots">${dots}</div>
@@ -456,6 +461,18 @@ function paintJobDetail(view, job) {
   view.querySelectorAll('[data-pub]').forEach((b) => b.addEventListener('click', () => triggerPublish(job.id, b.dataset.pub)));
   const pubAll = view.querySelector('#pub-all');
   if (pubAll) pubAll.addEventListener('click', () => triggerPublish(job.id));
+  const cancelBtn = view.querySelector('#cancel-job');
+  if (cancelBtn) cancelBtn.addEventListener('click', () => confirmCancel(job.id));
+}
+
+async function confirmCancel(id) {
+  if (!confirm('确定终止此任务？正在进行的生成/发布将被中断，且无法恢复。')) return;
+  const res = await api(`/api/jobs/${id}/cancel`, { method: 'POST', body: '{}' });
+  if (!res.ok) {
+    alert(res.data.error ?? '终止失败');
+    return;
+  }
+  renderJobDetail(id);
 }
 
 async function triggerPublish(id, onlyPlatform) {
