@@ -14,6 +14,8 @@ export interface Env {
   DEFAULT_RESOLUTION: string;
   DEFAULT_DURATION: string;
   PUBLISH_ON: string;
+  /** 发布版本号（部署时由 git 短 hash 自动注入） */
+  RELEASE_VERSION?: string;
 
   // ---- secrets（.dev.vars / wrangler secret put）----
   DASHSCOPE_API_KEY?: string;

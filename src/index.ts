@@ -79,6 +79,7 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
       durations: [5, 10, 15],
       publishOn: (env.PUBLISH_ON ?? 'douyin').split(','),
       workersAiEnabled: env.DASHSCOPE_API_KEY ? false : true,
+      version: env.RELEASE_VERSION ?? 'dev',
     });
   }
 

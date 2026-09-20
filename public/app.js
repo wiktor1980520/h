@@ -132,6 +132,17 @@ function navigate() {
   }
   const handler = routes[path] || renderDashboard;
   handler(arg);
+  renderVersion();
+}
+
+/** 顶栏展示当前发布版本号（来自 /api/settings 的 RELEASE_VERSION） */
+async function renderVersion() {
+  const el = document.querySelector('#version-badge');
+  if (!el || !ACCESS_KEY) return;
+  try {
+    const r = await api('/api/settings');
+    if (r.ok && r.data?.version) el.textContent = 'v' + r.data.version;
+  } catch (_) { /* 忽略展示失败 */ }
 }
 
 /* ---------------- 看板 ---------------- */
