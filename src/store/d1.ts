@@ -38,11 +38,32 @@ export class JobStore {
       .run();
   }
 
+  /** 软删除：写入 deleted_at，保留任务与其媒体文件 */
+  async softDelete(id: string): Promise<void> {
+    const now = new Date().toISOString();
+    await this.env.DB.prepare(`UPDATE jobs SET deleted_at = ?, updated_at = ? WHERE id = ?`)
+      .bind(now, now, id)
+      .run();
+  }
+
+  /** 从回收站恢复：清空 deleted_at */
+  async restore(id: string): Promise<void> {
+    const now = new Date().toISOString();
+    await this.env.DB.prepare(`UPDATE jobs SET deleted_at = NULL, updated_at = ? WHERE id = ?`)
+      .bind(now, id)
+      .run();
+  }
+
+  /** 彻底删除：物理删除记录（媒体文件由调用方另行清理） */
+  async permanentDelete(id: string): Promise<void> {
+    await this.env.DB.prepare('DELETE FROM jobs WHERE id = ?').bind(id).run();
+  }
+
   async list(status?: JobStatus, limit = 50, cursor?: string): Promise<ListResult> {
-    let q = 'SELECT payload, created_at FROM jobs';
+    let q = 'SELECT payload, created_at FROM jobs WHERE deleted_at IS NULL';
     const binds: (string | number | boolean)[] = [];
     if (status) {
-      q += ' WHERE status = ?';
+      q += ' AND status = ?';
       binds.push(status);
     }
     q += ' ORDER BY created_at DESC LIMIT ?';
@@ -57,7 +78,15 @@ export class JobStore {
     };
   }
 
-  async delete(id: string): Promise<void> {
-    await this.env.DB.prepare('DELETE FROM jobs WHERE id = ?').bind(id).run();
+  /** 回收站列表：仅已软删除的任务 */
+  async listDeleted(limit = 50, cursor?: string): Promise<ListResult> {
+    const q = 'SELECT payload, deleted_at FROM jobs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ?';
+    const { results } = await this.env.DB.prepare(q).bind(limit + 1).all<{ payload: string; deleted_at: string }>();
+    const hasMore = results.length > limit;
+    const rows = hasMore ? results.slice(0, limit) : results;
+    return {
+      items: rows.map((r) => rowToJob(r)),
+      cursor: hasMore ? rows[rows.length - 1].deleted_at : undefined,
+    };
   }
 }

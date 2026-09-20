@@ -55,6 +55,7 @@ const routes = {
   dashboard: renderDashboard,
   new: renderNew,
   config: renderConfig,
+  recycle: renderRecycle,
   job: renderJobDetail,
 };
 
@@ -209,6 +210,64 @@ function jobCard(job) {
         <button class="del-quick" data-del="${job.id}" title="删除任务">🗑</button>
       </div>
     </div>`;
+}
+
+/* ---------------- 回收站 ---------------- */
+async function renderRecycle() {
+  const view = $('#view');
+  view.innerHTML = `<div class="loading">载入中…</div>`;
+  const res = await api('/api/recycle');
+  if (!res.ok) {
+    view.innerHTML = `<div class="empty">${esc(res.data.error || '加载失败')}</div>`;
+    return;
+  }
+  const items = res.data.items || [];
+  if (!items.length) {
+    view.innerHTML = `<section class="hero"><div><h1>回收站</h1><p class="sub">软删除的任务在这里，媒体文件已保留</p></div></section><div class="empty">回收站是空的</div>`;
+    return;
+  }
+  view.innerHTML = `
+    <section class="hero"><div><h1>回收站</h1><p class="sub">软删除的任务（媒体文件已保留），可恢复或彻底删除</p></div>
+      <button class="btn ghost sm" id="empty-bin">清空回收站</button></section>
+    <div class="jobs">${items.map(recycleItemHtml).join('')}</div>`;
+  view.querySelectorAll('[data-rustore]').forEach((b) =>
+    b.addEventListener('click', (e) => { e.stopPropagation(); restoreJob(b.dataset.rustore); }));
+  view.querySelectorAll('[data-purge]').forEach((b) =>
+    b.addEventListener('click', (e) => { e.stopPropagation(); purgeJob(b.dataset.purge); }));
+  const empty = view.querySelector('#empty-bin');
+  if (empty) empty.addEventListener('click', () => {
+    if (!confirm(`确定彻底删除回收站中的 ${items.length} 个任务？将同时清理其媒体文件，不可恢复。`)) return;
+    Promise.all(items.map((j) => api(`/api/jobs/${j.id}/purge`, { method: 'POST', body: '{}' }))).then(renderRecycle);
+  });
+}
+
+function recycleItemHtml(job) {
+  const last = job.logs?.[job.logs.length - 1]?.msg ?? '';
+  return `
+    <div class="job-item">
+      <div class="job-item-body">
+        <div class="job-title">${esc(job.parsed?.title ?? job.id.slice(0, 8))}</div>
+        <span class="badge ${job.status}">${job.status}</span>
+        <div class="sub">${esc(last) || time(job.createdAt)}</div>
+      </div>
+      <div class="item-ops">
+        <button class="del-quick" data-rustore="${job.id}" title="恢复">↩</button>
+        <button class="del-quick" data-purge="${job.id}" title="彻底删除">🗑</button>
+      </div>
+    </div>`;
+}
+
+async function restoreJob(id) {
+  const res = await api(`/api/jobs/${id}/restore`, { method: 'POST', body: '{}' });
+  if (!res.ok) { alert(res.data.error ?? '恢复失败'); return; }
+  renderRecycle();
+}
+
+async function purgeJob(id) {
+  if (!confirm('彻底删除此任务？将同时清理其媒体文件，不可恢复。')) return;
+  const res = await api(`/api/jobs/${id}/purge`, { method: 'POST', body: '{}' });
+  if (!res.ok) { alert(res.data.error ?? '删除失败'); return; }
+  renderRecycle();
 }
 
 /* ---------------- 新建任务 ---------------- */
@@ -474,7 +533,7 @@ function paintJobDetail(view, job) {
 }
 
 async function confirmDelete(id) {
-  if (!confirm('确定永久删除此任务？其生成的图片/视频也会一并删除，且不可恢复。')) return;
+  if (!confirm('将任务移入回收站？媒体文件会保留，可在回收站恢复或彻底删除。')) return;
   const res = await api(`/api/jobs/${id}`, { method: 'DELETE', body: '{}' });
   if (!res.ok) {
     alert(res.data.error ?? '删除失败');
@@ -605,7 +664,7 @@ function readAsDataURL(file) {
 document.querySelectorAll('.job-item')?.forEach((el) => el.addEventListener('click', () => (location.hash = `#/job/${el.dataset.id}`)));
 document.addEventListener('click', (e) => {
   const delBtn = e.target.closest('.del-quick');
-  if (delBtn) {
+  if (delBtn && delBtn.dataset.del) {
     e.preventDefault();
     e.stopPropagation();
     confirmDelete(delBtn.dataset.del);

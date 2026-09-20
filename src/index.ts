@@ -106,9 +106,30 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
       return job ? json(job) : notFound();
     }
     if (request.method === 'DELETE') {
-      await deleteJob(id, env, store);
-      return json({ ok: true });
+      await softDeleteJob(id, env, store);
+      return json({ ok: true, soft: true });
     }
+  }
+
+  if (p === '/api/recycle' && request.method === 'GET') {
+    const cursor = url.searchParams.get('cursor') ?? undefined;
+    const limit = clampInt(url.searchParams.get('limit'), 50, 1, 100);
+    const { items, cursor: next } = await store.listDeleted(limit, cursor);
+    return json({ items, cursor: next ?? null });
+  }
+
+  const restoreMatch = /^\/api\/jobs\/([^/]+)\/restore$/.exec(p);
+  if (restoreMatch && request.method === 'POST') {
+    const job = await store.get(restoreMatch[1]);
+    if (!job) return notFound();
+    await store.restore(restoreMatch[1]);
+    return json({ ok: true });
+  }
+
+  const purgeMatch = /^\/api\/jobs\/([^/]+)\/purge$/.exec(p);
+  if (purgeMatch && request.method === 'POST') {
+    await purgeJob(purgeMatch[1], env, store);
+    return json({ ok: true });
   }
 
   const publishMatch = /^\/api\/jobs\/([^/]+)\/publish$/.exec(p);
@@ -168,14 +189,25 @@ async function createJob(request: Request, env: Env, store: JobStore): Promise<R
   return json({ job, workflowInstanceId: instance.id }, 201);
 }
 
-async function deleteJob(id: string, env: Env, store: JobStore): Promise<void> {
+/** 软删除：终止运行中的工作流，写入 deleted_at，保留媒体文件，进回收站 */
+async function softDeleteJob(id: string, env: Env, store: JobStore): Promise<void> {
+  const job = await store.get(id);
+  if (job?.workflowInstanceId) {
+    const instance = await env.PIPELINE_WORKFLOW.get(job.workflowInstanceId);
+    await instance?.terminate().catch(() => {});
+  }
+  await store.softDelete(id);
+}
+
+/** 彻底删除：终止工作流 + 清理 R2 媒体 + 物理删库（回收站里的永久清空） */
+async function purgeJob(id: string, env: Env, store: JobStore): Promise<void> {
   const job = await store.get(id);
   if (job?.workflowInstanceId) {
     const instance = await env.PIPELINE_WORKFLOW.get(job.workflowInstanceId);
     await instance?.terminate().catch(() => {});
   }
   await new MediaStore(env, env.R2_PUBLIC_BASE).deleteByPrefix(id).catch(() => {});
-  await store.delete(id);
+  await store.permanentDelete(id);
 }
 
 async function cancelJob(id: string, env: Env, store: JobStore): Promise<Response> {
