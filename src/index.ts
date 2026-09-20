@@ -18,17 +18,22 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
 
+    // API / 媒体/webhook 路由优先于静态资源，避免 SPA 兜底吞掉接口请求
+    if (
+      url.pathname.startsWith('/api/') ||
+      url.pathname.startsWith('/media/') ||
+      url.pathname === '/v1/webhooks/xhs'
+    ) {
+      if (url.pathname.startsWith('/media/')) {
+        return serveMedia(env, decodeURIComponent(url.pathname.slice('/media/'.length)));
+      }
+      return routeApi(request, url, env);
+    }
+
     // 静态资源（前端界面）优先
     const asset = await env.ASSETS.fetch(request);
     if (asset.status !== 404) return asset;
-
-    // R2 媒体回源：/media/<key>
-    if (url.pathname.startsWith('/media/')) {
-      return serveMedia(env, decodeURIComponent(url.pathname.slice('/media/'.length)));
-    }
-
-    // REST API
-    return routeApi(request, url, env);
+    return new Response('Not Found', { status: 404 });
   },
 };
 
