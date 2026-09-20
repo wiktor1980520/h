@@ -36,7 +36,10 @@ export class DashScopeAsyncClient implements AsyncInferClient {
     private servicePath: string, // 如 /api/v1/services/aigc/image2image/text2image
   ) {}
 
-  async submitTask(payload: unknown): Promise<AsyncSubmitResult> {
+  async submitTask(
+    payload: unknown,
+    top?: { parameters?: Record<string, unknown> },
+  ): Promise<AsyncSubmitResult> {
     const resp = await fetch(`${trimSlash(this.baseUrl)}/api/v1/services/aigc/${this.servicePath}`, {
       method: 'POST',
       headers: {
@@ -44,7 +47,7 @@ export class DashScopeAsyncClient implements AsyncInferClient {
         authorization: `Bearer ${this.apiKey}`,
         'x-dashscope-async': 'enable',
       },
-      body: JSON.stringify({ model: this.model, input: payload }),
+      body: JSON.stringify({ model: this.model, input: payload, ...(top ?? {}) }),
     });
     const json = (await resp.json().catch(() => ({}))) as DashScopeTask;
     const taskId = json.output?.task_id;

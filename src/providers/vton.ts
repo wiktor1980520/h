@@ -41,10 +41,10 @@ export class DashScopeVton implements VtonProvider {
     const input: Record<string, string> = { person_image_url: personURL };
     if (req.category === 'bottom') input.bottom_garment_url = garmentURL;
     else input.top_garment_url = garmentURL; // 上装 / 连衣裙(通装) 走 top_garment_url
-    const { taskId } = await this.client.submitTask({
-      ...input,
-      parameters: { resolution: -1, restore_face: true },
-    });
+    const { taskId } = await this.client.submitTask(
+      input,
+      { parameters: { resolution: -1, restore_face: true } },
+    );
     const url = await pollUntilDone(this.client, taskId, 60);
     return downloadBytes(url);
   }
