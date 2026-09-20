@@ -48,6 +48,8 @@ export class DashScopeAsyncClient implements AsyncInferClient {
         'x-dashscope-async': 'enable',
       },
       body: JSON.stringify({ model: this.model, input: payload, ...(top ?? {}) }),
+      // 挂起的请求也会有结果：60s 超时即报错，避免任务永久卡在提交
+      signal: AbortSignal.timeout(60_000),
     });
     const json = (await resp.json().catch(() => ({}))) as DashScopeTask;
     const taskId = json.output?.task_id;
@@ -60,6 +62,7 @@ export class DashScopeAsyncClient implements AsyncInferClient {
   async pollTask(taskId: string): Promise<AsyncPollResult> {
     const resp = await fetch(`${trimSlash(this.baseUrl)}/api/v1/tasks/${taskId}`, {
       headers: { authorization: `Bearer ${this.apiKey}` },
+      signal: AbortSignal.timeout(30_000),
     });
     const text = await resp.text();
     if (!resp.ok) {
