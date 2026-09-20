@@ -54,9 +54,12 @@ export class JobStore {
       .run();
   }
 
-  /** 彻底删除：物理删除记录（媒体文件由调用方另行清理） */
+  /** 彻底删除：物理删除记录及其全部关联内容(发布流水)；媒体文件由调用方另行清理 */
   async permanentDelete(id: string): Promise<void> {
-    await this.env.DB.prepare('DELETE FROM jobs WHERE id = ?').bind(id).run();
+    await this.env.DB.batch([
+      this.env.DB.prepare('DELETE FROM publish_log WHERE job_id = ?').bind(id),
+      this.env.DB.prepare('DELETE FROM jobs WHERE id = ?').bind(id),
+    ]);
   }
 
   async list(status?: JobStatus, limit = 50, cursor?: string): Promise<ListResult> {
