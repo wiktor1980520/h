@@ -83,6 +83,35 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
     }
   }
 
+  // 诊断：用真实配置复现图生视频提交（非轮询），返回原始响应与耗时（会产生计费任务）
+  if (p === '/api/diag/video' && request.method === 'POST') {
+    const body = (await request.json().catch(() => null)) as { jobId?: string } | null;
+    if (!body?.jobId) return json({ error: '需要 jobId' }, 400);
+    try {
+      const cfg = await overlayConfig(env);
+      const job = await store.get(body.jobId);
+      if (!job) return json({ error: '任务不存在' }, 404);
+      const m = new MediaStore(env, env.R2_PUBLIC_BASE);
+      const kind = cfg.VIDEO_MODEL ? 'kling' : 'seedance';
+      const model = (kind === 'kling' ? cfg.VIDEO_MODEL : (cfg.VIDEO_MODEL ?? 'seedance-02'));
+      const base = cfg.IMAGE_TO_VIDEO_ENDPOINT ?? 'https://dashscope.aliyuncs.com';
+      const target = `${base.replace(/\/+$/, '')}/api/v1/services/aigc/image2video/${model}`;
+      const tryOnKey = job.tryOn?.output?.value ?? m.key(job.id, 'tryon', 'jpg');
+      const image = await m.getPublicURL(tryOnKey);
+      const started = Date.now();
+      const resp = await fetch(target, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.DASHSCOPE_API_KEY ?? ''}`, 'x-dashscope-async': 'enable' },
+        body: JSON.stringify({ model, input: { image, prompt: '时装展示', duration: 15, aspect_ratio: '16:9', resolution: '1080p' } }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      const text = await resp.text();
+      return json({ ok: true, target, model, image, http: resp.status, ms: Date.now() - started, body: text.slice(0, 600) });
+    } catch (e) {
+      return json({ ok: false, error: String(e) }, 502);
+    }
+  }
+
   // 诊断：用真实配置(密钥/模型/端点) + 真实任务图片地址，完整跑一次试穿提交
   if (p === '/api/diag/tryon' && request.method === 'POST') {
     const body = (await request.json().catch(() => null)) as { jobId?: string } | null;

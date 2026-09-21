@@ -110,8 +110,10 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
         garmentImage: inputs.garment,
         category: parsed?.category,
       });
-      const key = media.key(jobId, 'tryon', 'png');
-      await media.saveBytes(key, bytes, 'image/png');
+      // aitryon 返回的是 JPEG（但旧实现按 png 存，导致扩展名/类型与内容不符、后续模型解码失败）
+      const { ext, ct } = detectImageType(bytes);
+      const key = media.key(jobId, 'tryon', ext);
+      await media.saveBytes(key, bytes, ct);
       current.tryOn = { output: { kind: 'r2', value: key }, provider: vton.name };
       pushLog(current, 'tryon', 'info', `试穿完成 (${vton.name})`);
       await store.save(current);
@@ -234,4 +236,13 @@ function defaultTargets(pubOn: string | undefined): PublishTarget[] {
     .map((s) => s.trim())
     .filter(Boolean)
     .map((p) => ({ platform: p as PublishTarget['platform'], status: 'pending' }));
+}
+
+/** 依据字节魔数识别图片真实格式（避免扩展名/类型与内容不符导致下游模型解码失败） */
+function detectImageType(bytes: ArrayBuffer): { ext: string; ct: 'image/png' | 'image/jpeg' | 'image/webp' } {
+  const b = new Uint8Array(bytes);
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return { ext: 'jpg', ct: 'image/jpeg' };
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50) return { ext: 'png', ct: 'image/png' };
+  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49) return { ext: 'webp', ct: 'image/webp' };
+  return { ext: 'png', ct: 'image/png' };
 }
