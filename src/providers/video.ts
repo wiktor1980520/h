@@ -19,13 +19,16 @@ export interface VideoGenProvider {
   generate(req: ImageToVideoRequest): Promise<string>;
 }
 
+/** 图生视频过程中的可观测回调（写入任务日志，便于排查） */
+export type VideoPollFn = (status: string, attempt: number) => void | Promise<void>;
+
 /** 可灵 / 即梦（DashScope 异步托管） */
 export class DashScopeVideo implements VideoGenProvider {
   readonly name: string;
   private client: DashScopeAsyncClient;
   private media: MediaStore;
 
-  constructor(env: Env, media: MediaStore, kind: 'kling' | 'seedance') {
+  constructor(env: Env, media: MediaStore, kind: 'kling' | 'seedance', private onPoll?: VideoPollFn) {
     this.name = kind === 'kling' ? 'kling-v3' : 'seedance';
     const base = env.IMAGE_TO_VIDEO_ENDPOINT ?? 'https://dashscope.aliyuncs.com';
     const model = (kind === 'kling' ? env.VIDEO_MODEL : undefined) ?? (kind === 'kling' ? 'kling-v3' : 'seedance-02');
@@ -44,9 +47,11 @@ export class DashScopeVideo implements VideoGenProvider {
       aspect_ratio: ratio,
       resolution: req.options.resolution,
     });
+    this.onPoll?.(`已提交图生视频任务 task_id=${taskId}`, 0);
     let out: string | null = null;
     for (let i = 0; i < 50 && !out; i++) {
       const r = await this.client.pollTask(taskId);
+      this.onPoll?.(`task_status=${r.status}${r.outputUrl ? ' (已产出)' : ''}`, i + 1);
       if (r.status === 'FAILED') throw new Error(`图生视频失败: ${r.error}`);
       if (r.status === 'SUCCEEDED' && r.outputUrl) out = r.outputUrl;
       else await sleepMs(6000);
@@ -71,7 +76,8 @@ export function buildVideo(
   env: Env,
   media: MediaStore,
   kind: 'kling' | 'seedance' = 'kling',
+  onPoll?: VideoPollFn,
 ): VideoGenProvider {
-  if (env.DASHSCOPE_API_KEY) return new DashScopeVideo(env, media, kind);
+  if (env.DASHSCOPE_API_KEY) return new DashScopeVideo(env, media, kind, onPoll);
   return new WorkersAiVideo(env);
 }

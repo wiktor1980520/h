@@ -123,7 +123,10 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
       const current = await this.requireJob(store, jobId);
       current.stage = 'video';
       await store.save(current);
-      const gen = buildVideo(cfg, media, videoKind(cfg.VIDEO_MODEL));
+      const gen = buildVideo(cfg, media, videoKind(cfg.VIDEO_MODEL), async (status, attempt) => {
+        pushLog(current, 'video', 'info', `轮询 ${attempt}: ${status}`);
+        await store.save(current).catch(() => {});
+      });
       const prompt = composePrompt({
         title: current.parsed?.title,
         category: parsed?.category,
