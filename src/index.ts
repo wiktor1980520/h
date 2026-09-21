@@ -65,6 +65,24 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
     return json({ error: 'unauthorized: 需要访问密钥' }, 401);
   }
 
+  // 诊断：GET 试穿/视频任务的原始轮询响应，确认结果字段结构（非计费）
+  if (p === '/api/diag/task' && request.method === 'POST') {
+    const body = (await request.json().catch(() => null)) as { taskId?: string } | null;
+    if (!body?.taskId) return json({ error: '需要 taskId' }, 400);
+    try {
+      const cfg = await overlayConfig(env);
+      const base = cfg.IMAGE_TO_VIDEO_ENDPOINT ?? 'https://dashscope.aliyuncs.com';
+      const resp = await fetch(`${base.replace(/\/+$/, '')}/api/v1/tasks/${encodeURIComponent(body.taskId)}`, {
+        headers: { authorization: `Bearer ${cfg.DASHSCOPE_API_KEY ?? ''}` },
+        signal: AbortSignal.timeout(25_000),
+      });
+      const text = await resp.text();
+      return json({ ok: true, http: resp.status, body: text.slice(0, 1200) });
+    } catch (e) {
+      return json({ ok: false, error: String(e) }, 502);
+    }
+  }
+
   // 诊断：用真实配置(密钥/模型/端点) + 真实任务图片地址，完整跑一次试穿提交
   if (p === '/api/diag/tryon' && request.method === 'POST') {
     const body = (await request.json().catch(() => null)) as { jobId?: string } | null;
@@ -216,7 +234,8 @@ async function createJob(request: Request, env: Env, store: JobStore): Promise<R
     personImage: active,
     personImages,
     garment: {
-      kind: 'url',
+      // image 源的商品图是已上传到 R2 的对象，value 即 R2 key；link 源才是外部 URL
+      kind: body.garmentType === 'image' ? 'r2' : 'url',
       value: body.garmentValue,
       source: body.garmentType === 'link' ? 'link' : 'image',
     },
