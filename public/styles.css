@@ -218,7 +218,7 @@ code { background: rgba(0, 0, 0, 0.05); padding: 1px 6px; border-radius: 6px; fo
 .job-log { color: var(--text-2); font-size: 13px; }
 .media { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
 .media > div { display: flex; flex-direction: column; gap: 8px; align-items: center; }
-.media img, .media video { width: 240px; aspect-ratio: 9 / 16; max-height: none; object-fit: contain; border-radius: 14px; border: 1px solid var(--line); background: #000; box-shadow: var(--shadow-sm); }
+.media img, .media video { width: 200px; aspect-ratio: 3 / 4; max-height: none; object-fit: cover; object-position: center top; border-radius: 14px; border: 1px solid var(--line); box-shadow: var(--shadow-sm); }
 .tag { font-size: 11px; color: var(--text-2); }
 .prompt-card { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
 .prompt-tag { display: inline-block; background: var(--blue); color: #fff; font-size: 12px; font-weight: 600; padding: 3px 12px; border-radius: 999px; margin-bottom: 12px; }
@@ -260,7 +260,7 @@ code { background: rgba(0, 0, 0, 0.05); padding: 1px 6px; border-radius: 6px; fo
   .topbar { padding: 0 12px; }
   .app { padding: 24px 14px 80px; }
   h1 { font-size: 26px; }
-  .media img, .media video { max-width: 100%; width: 240px; aspect-ratio: 9 / 16; }
+  .media img, .media video { max-width: 100%; width: 200px; aspect-ratio: 3 / 4; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
