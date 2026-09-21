@@ -493,7 +493,7 @@ function paintJobDetail(view, job) {
   const video = job.video?.output?.value
     ? `<div><video src="${mediaSrc(job.video.output)}" controls preload="metadata"></video>
         <span class="tag">成品</span>
-        <a class="btn ghost sm" href="/media/${job.video.output.value}?download=1" download>下载视频</a></div>`
+        <button type="button" class="btn ghost sm" data-dl="${job.video.output.value}">下载视频</button></div>`
     : '';
 
   const pubRom =
@@ -746,4 +746,38 @@ document.addEventListener('click', (e) => {
   }
   const item = e.target.closest('.job-item');
   if (item) location.hash = `#/job/${item.dataset.id}`;
+
+  // 视频/图片下载：前端 fetch 二进制流 → blob 下载，绕开浏览器 download 属性/WebView 拦成 HTML 的问题
+  const dlBtn = e.target.closest('[data-dl]');
+  if (dlBtn && dlBtn.dataset.dl) {
+    e.preventDefault();
+    e.stopPropagation();
+    forceDownload(dlBtn);
+  }
 });
+
+/** 强制下载：取得原始字节后以 blob 保存，保证文件为视频/图片二进制而非 HTML */
+async function forceDownload(btn) {
+  const key = btn.dataset.dl;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '下载中…';
+  try {
+    const res = await fetch(`/media/${key}?download=1`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = key.split('/').pop() || 'download';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch (err) {
+    alert('下载失败: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
