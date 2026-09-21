@@ -38,16 +38,20 @@ export class DashScopeVideo implements VideoGenProvider {
   }
 
   async generate(req: ImageToVideoRequest): Promise<string> {
-    // 视频模型要求 image 为公网 URL（不接受 base64 dataURL）；用 r2 公共桶地址即可被百炼抓取
+    // 视频模型要求图片为公网 URL（不接受 base64 dataURL）；用 r2 公共桶地址即可被百炼抓取。
+    // 百炼图生视频规范：图片放 input.img_url，prompt 放 input，时长/分辨率放顶层 parameters。
     const image = await this.media.getPublicURL(req.tryOnImageKey);
-    const ratio = req.options.resolution === '1080p' ? '16:9' : '16:9';
-    const { taskId } = await this.client.submitTask({
-      image,
-      prompt: req.prompt ?? '',
-      duration: req.duration,
-      aspect_ratio: ratio,
-      resolution: req.options.resolution,
-    });
+    const resolution = (req.options.resolution ?? '1080p').toUpperCase(); // 枚举为大写 1080P/720P
+    const { taskId } = await this.client.submitTask(
+      { img_url: image, prompt: req.prompt ?? '' },
+      {
+        parameters: {
+          duration: req.duration,
+          resolution,
+          aspect_ratio: '16:9',
+        },
+      },
+    );
     this.onPoll?.(`已提交图生视频任务 task_id=${taskId}`, 0);
     let out: string | null = null;
     for (let i = 0; i < 50 && !out; i++) {
