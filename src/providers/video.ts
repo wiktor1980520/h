@@ -29,29 +29,31 @@ export class DashScopeVideo implements VideoGenProvider {
   private media: MediaStore;
 
   constructor(env: Env, media: MediaStore, kind: 'kling' | 'seedance', private onPoll?: VideoPollFn) {
-    this.name = kind === 'kling' ? 'kling-v3' : 'seedance';
-    const base = env.IMAGE_TO_VIDEO_ENDPOINT ?? 'https://dashscope.aliyuncs.com';
     const model = (kind === 'kling' ? env.VIDEO_MODEL : undefined) ?? (kind === 'kling' ? 'kling-v3' : 'seedance-02');
-    // DashScope 图生视频走 /image2video/<model>；模型 id 需与配置的 VIDEO_MODEL 一致
-    this.client = new DashScopeAsyncClient(this.name, base, env.DASHSCOPE_API_KEY ?? '', model, `image2video/${model}`);
+    this.name = model;
+    const base = env.IMAGE_TO_VIDEO_ENDPOINT ?? 'https://dashscope.aliyuncs.com';
+    // Wan 系列走独立的 video-generation/video-synthesis（地域专属 maas 端点），其余走 image2video/<model>
+    const wan = model.toLowerCase().startsWith('wan');
+    this.wan = wan;
+    const servicePath = wan ? 'video-generation/video-synthesis' : `image2video/${model}`;
+    this.client = new DashScopeAsyncClient(this.name, base, env.DASHSCOPE_API_KEY ?? '', model, servicePath);
     this.media = media;
   }
+  private wan = false;
 
   async generate(req: ImageToVideoRequest): Promise<string> {
     // 视频模型要求图片为公网 URL（不接受 base64 dataURL）；用 r2 公共桶地址即可被百炼抓取。
-    // 百炼图生视频规范：图片放 input.img_url，prompt 放 input，时长/分辨率放顶层 parameters。
     const image = await this.media.getPublicURL(req.tryOnImageKey);
     const resolution = (req.options.resolution ?? '1080p').toUpperCase(); // 枚举为大写 1080P/720P
-    const { taskId } = await this.client.submitTask(
-      { img_url: image, prompt: req.prompt ?? '' },
-      {
-        parameters: {
-          duration: req.duration,
-          resolution,
-          aspect_ratio: '16:9',
-        },
-      },
-    );
+    const prompt = req.prompt ?? '';
+    // Wan3.0 图生视频：首帧图放 input.media[{type:first_frame,url}]，比例用 ratio 参数
+    const input = this.wan
+      ? { prompt, media: [{ type: 'first_frame', url: image }] }
+      : { prompt, img_url: image };
+    const parameters = this.wan
+      ? { resolution, ratio: 'adaptive', duration: req.duration, prompt_extend: true }
+      : { resolution, duration: req.duration, aspect_ratio: '16:9' };
+    const { taskId } = await this.client.submitTask(input, { parameters });
     this.onPoll?.(`已提交图生视频任务 task_id=${taskId}`, 0);
     let out: string | null = null;
     for (let i = 0; i < 50 && !out; i++) {
