@@ -64,6 +64,8 @@ export interface VideoResult {
   output?: MediaRef;
   provider?: string;
   coverImage?: MediaRef;
+  /** DashScope 图生视频任务 id（幂等提交/续轮询用） */
+  taskId?: string;
   /** 生成使用的提示词（用于前端可视化展示） */
   prompt?: string;
 }

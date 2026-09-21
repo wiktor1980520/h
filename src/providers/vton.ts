@@ -27,7 +27,7 @@ export class DashScopeVton implements VtonProvider {
   private client: DashScopeAsyncClient;
   private media: MediaStore;
 
-  constructor(env: Env, media: MediaStore, private onPoll?: TryOnPollFn) {
+  constructor(env: Env, media: MediaStore, private onPoll?: TryOnPollFn, private sleeper: Sleeper = sleepMs) {
     const base = env.IMAGE_TO_VIDEO_ENDPOINT ?? 'https://dashscope.aliyuncs.com';
     const model = env.TRYON_MODEL ?? 'aitryon';
     this.client = new DashScopeAsyncClient('dashscope-vton', base, env.DASHSCOPE_API_KEY ?? '', model, 'image2image/image-synthesis');
@@ -49,10 +49,13 @@ export class DashScopeVton implements VtonProvider {
       { parameters: { resolution: -1, restore_face: true } },
     );
     this.onPoll?.(`已提交试穿任务 task_id=${taskId}`, 0);
-    const url = await pollUntilDone(this.client, taskId, 60, this.onPoll);
+    const url = await pollUntilDone(this.client, taskId, 60, this.onPoll, this.sleeper);
     return downloadBytes(url);
   }
 }
+
+/** 轮询等待函数：Workflows 中应注入 step.sleep（暂停并另起调用），避免单次调用超 50 子请求 */
+export type Sleeper = (ms: number) => Promise<void>;
 
 /** Workers AI 评估路径：当前目录尚无专用试穿模型，占位并抛清晰错误，便于接入自托管模型 */
 export class WorkersAiVton implements VtonProvider {
@@ -67,9 +70,9 @@ export class WorkersAiVton implements VtonProvider {
   }
 }
 
-export function buildVton(env: Env, media: MediaStore, onPoll?: TryOnPollFn): VtonProvider {
+export function buildVton(env: Env, media: MediaStore, onPoll?: TryOnPollFn, sleeper?: Sleeper): VtonProvider {
   // 倾向外部托管；Workers AI 路径通过切换实现体现（当前会抛提示）。
-  if (env.DASHSCOPE_API_KEY) return new DashScopeVton(env, media, onPoll);
+  if (env.DASHSCOPE_API_KEY) return new DashScopeVton(env, media, onPoll, sleeper);
   return new WorkersAiVton(env, media);
 }
 
@@ -78,6 +81,7 @@ async function pollUntilDone(
   taskId: string,
   maxAttempts: number,
   onPoll?: TryOnPollFn,
+  sleeper: Sleeper = sleepMs,
 ): Promise<string> {
   let out: string | null = null;
   for (let i = 0; i < maxAttempts && !out; i++) {
@@ -85,7 +89,7 @@ async function pollUntilDone(
     if (!out) await onPoll?.(`task_status=${r.status}`, i + 1);
     if (r.status === 'FAILED') throw new Error(`试穿失败: ${r.error}`);
     if (r.status === 'SUCCEEDED' && r.outputUrl) out = r.outputUrl;
-    else await sleepMs(4000);
+    else await sleeper(4000);
   }
   if (!out) throw new Error('试穿超时: 百炼任务持续未完成');
   return out;

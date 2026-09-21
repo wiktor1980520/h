@@ -120,9 +120,12 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
       return key;
     });
 
-    // 4. 图生视频（工具统一内部完成 提交→轮询→产出下载URL；如需逐轮推进请拆分提交/轮询两步）
-    const videoKey = await step.do('image-to-video', async () => {
+    // 4. 图生视频：分「提交 / 轮询 / 落库」三个顶层步骤，轮询间隔用 step.sleep（每次唤醒重置子请求配额，
+    //    避免单次调用内循环 fetch 超过 Worker 的 50 子请求上限 → 'Too many subrequests'）。
+    // 4a. 提交（幂等：已有 taskId 则复用）
+    const vid = await step.do('submit video task', async () => {
       const current = await this.requireJob(store, jobId);
+      if (current.video?.taskId) return { taskId: current.video.taskId };
       current.stage = 'video';
       await store.save(current);
       const gen = buildVideo(cfg, media, videoKind(cfg.VIDEO_MODEL), async (status, attempt) => {
@@ -134,17 +137,45 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
         category: parsed?.category,
         duration: current.options.duration,
       });
-      const downloadURL = await gen.generate({
+      const { taskId } = await gen.submit({
         tryOnImageKey: tryOnKey,
         options: current.options,
         duration: current.options.duration,
         prompt,
       });
+      current.video = { ...current.video, taskId, provider: gen.name, prompt };
+      await store.save(current);
+      return { taskId };
+    });
+
+    // 4b. 轮询（每次查询一个独立 step，间隔用 step.sleep，直至成功/失败/超时）
+    let videoURL: string | null = null;
+    for (let i = 0; i < 60 && !videoURL; i++) {
+      const r = await step.do(`poll video task ${i}`, async () => {
+        const current = await this.requireJob(store, jobId);
+        const gen = buildVideo(cfg, media, videoKind(cfg.VIDEO_MODEL), async (status, attempt) => {
+          pushLog(current, 'video', 'info', `轮询 ${attempt}: ${status}`);
+          await store.save(current).catch(() => {});
+        });
+        const res = await gen.poll(vid.taskId);
+        pushLog(current, 'video', 'info', `轮询 ${i + 1}: task_status=${res.status}${res.url ? ' (已产出)' : ''}`);
+        await store.save(current).catch(() => {});
+        return res;
+      });
+      if (r.status === 'FAILED') throw new Error(`图生视频失败: ${r.error}`);
+      if (r.status === 'SUCCEEDED' && r.url) { videoURL = r.url; break; }
+      await step.sleep(`wait video ${i}`, '6 seconds');
+    }
+    if (!videoURL) throw new Error('图生视频超时');
+
+    // 4c. 下载落 R2
+    const videoKey = await step.do('persist video', async () => {
+      const current = await this.requireJob(store, jobId);
       const key = media.key(jobId, 'video', 'mp4');
-      const resp = await fetch(downloadURL);
+      const resp = await fetch(videoURL);
       if (!resp.ok) throw new Error(`下载成品视频失败: HTTP ${resp.status}`);
       await media.saveBytes(key, resp.body!, 'video/mp4');
-      current.video = { output: { kind: 'r2', value: key }, provider: gen.name, prompt };
+      current.video = { ...current.video, output: { kind: 'r2', value: key } };
       pushLog(current, 'video', 'info', '视频生成并落库');
       await store.save(current);
       return key;
