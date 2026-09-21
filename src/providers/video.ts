@@ -38,7 +38,8 @@ export class DashScopeVideo implements VideoGenProvider {
   }
 
   async generate(req: ImageToVideoRequest): Promise<string> {
-    const image = await this.media.dataURL(req.tryOnImageKey, 'image/png');
+    // 视频模型要求 image 为公网 URL（不接受 base64 dataURL）；用 r2 公共桶地址即可被百炼抓取
+    const image = await this.media.getPublicURL(req.tryOnImageKey);
     const ratio = req.options.resolution === '1080p' ? '16:9' : '16:9';
     const { taskId } = await this.client.submitTask({
       image,
