@@ -5,6 +5,8 @@ const STAGE_ORDER = ['init', 'parse', 'tryon', 'video', 'publish', 'done'];
 const PLATFORM_LABEL = { douyin: '抖音', xiaohongshu: '小红书', weixin: '视频号' };
 const ACCESS_KEY = sessionStorage.getItem('app_access_key') || '';
 
+let configRevealed = false; // 配置页"查看明文"开关
+
 const CONFIG_FIELDS = [
   ['DASHSCOPE_API_KEY', '百炼/DashScope API Key'],
   ['TRYON_MODEL', '试穿模型'],
@@ -617,29 +619,46 @@ function renderConfig() {
       <span>写保护令牌 <code>CONFIG_TOKEN</code>（可选）</span>
       <input type="password" name="config_token" autocomplete="new-password" placeholder="仅当设了 CONFIG_TOKEN 时填写" />
     </label>` +
-    `<div class="cfg-actions"><button type="submit" class="btn primary">保存配置</button><span id="config-msg" class="msg"></span></div>`;
+    `<div class="cfg-actions"><button type="submit" class="btn primary">保存配置</button><button type="button" id="cfg-reveal" class="btn">查看明文</button><span id="config-msg" class="msg"></span></div>`;
 
-  api('/api/config').then((r) => applyConfigState(form, r.data));
+  api('/api/config').then((r) => applyConfigState(form, r.data, false));
 
   form.addEventListener('click', (e) => {
     const btn = e.target.closest('.cfg-clear');
     if (btn) {
       form.querySelector(`input[name="${btn.dataset.key}"]`).value = '__CLEAR__';
+      configRevealed = false;
       saveConfig();
     }
   });
+  const revealBtn = form.querySelector('#cfg-reveal');
+  if (revealBtn) {
+    revealBtn.addEventListener('click', () => {
+      configRevealed = !configRevealed;
+      revealBtn.textContent = configRevealed ? '隐藏明文' : '查看明文';
+      api('/api/config' + (configRevealed ? '?reveal=1' : '')).then((r) => applyConfigState(form, r.data, configRevealed));
+    });
+  }
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     saveConfig();
   });
 }
 
-function applyConfigState(form, data) {
+function applyConfigState(form, data, reveal) {
   for (const k of data.keys || []) {
     const inp = form.querySelector(`input[name="${k.key}"]`);
     if (!inp) continue;
     if (inp.value === '__CLEAR__') inp.value = '';
-    inp.placeholder = k.set ? '已配置（留空不变）' : '未配置';
+    if (reveal && k.set) {
+      inp.type = 'text';
+      inp.value = k.masked; // 后端 reveal=1 时 masked 字段即为明文
+      inp.placeholder = '已配置';
+    } else {
+      inp.type = 'password';
+      inp.value = '';
+      inp.placeholder = k.set ? '已配置（留空不变）' : '未配置';
+    }
     inp.classList.toggle('set', !!k.set);
   }
 }

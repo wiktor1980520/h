@@ -164,7 +164,7 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
   }
 
   if (p === '/api/config') {
-    if (request.method === 'GET') return getConfig(env);
+    if (request.method === 'GET') return getConfig(new URL(request.url), env);
     if (request.method === 'POST') return saveConfig(request, env);
   }
 
@@ -440,13 +440,14 @@ async function listPlatforms(env: Env): Promise<Array<{ platform: string; ready:
 }
 
 /** GET /api/config — 返回各键是否已配置（值掩码，避免公开泄露第三方 key） */
-async function getConfig(env: Env): Promise<Response> {
+async function getConfig(url: URL, env: Env): Promise<Response> {
   const cfg = await new ConfigStore(env).all();
+  const reveal = url.searchParams.get('reveal') === '1'; // 明文仅对已登录(访问密钥)可见
   return json({
     keys: CONFIG_KEYS.map((k) => ({
       key: k,
       set: cfg[k] !== undefined && cfg[k] !== '',
-      masked: cfg[k] ? '••••••••' : '',
+      masked: cfg[k] ? (reveal ? cfg[k] : '••••••••') : '',
       envFallback: !!(env as Env)[k as keyof Env] || undefined,
     })),
   });
