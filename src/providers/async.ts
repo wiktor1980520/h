@@ -24,6 +24,10 @@ interface DashScopeTask {
     results?: Array<{ url?: string; [k: string]: unknown }>;
     task_status?: string;
     message?: string;
+    // 不同模型把成品放在不同字段：试穿/图生视频普遍用 image_url / video_url
+    image_url?: string;
+    video_url?: string;
+    url?: string;
   };
 }
 
@@ -71,7 +75,11 @@ export class DashScopeAsyncClient implements AsyncInferClient {
     }
     const json = JSON.parse(text) as DashScopeTask;
     const st = (json.output?.task_status ?? 'PENDING').toUpperCase();
-    const url = json.output?.results?.find((r) => r.url)?.url;
+    const url =
+      json.output?.image_url ??
+      json.output?.video_url ??
+      json.output?.url ??
+      json.output?.results?.find((r) => r.url)?.url;
     if (st === 'FAILED') return { status: 'FAILED', error: json.output?.message ?? '任务失败' };
     if (st === 'SUCCEEDED') return { status: 'SUCCEEDED', outputUrl: url };
     return { status: st === 'RUNNING' ? 'RUNNING' : 'PENDING' };
