@@ -29,7 +29,7 @@
     "PUBLISH_ON": "douyin",
     "R2_PUBLIC_BASE": "https://r2.1024byte.net",
     // Wan3.0 视频需地域专属 maas 端点（非通用 dashscope 端点）；配置页「图生视频接口地址」可覆盖
-    "IMAGE_TO_VIDEO_ENDPOINT": "https://ws-g45rnohvs6i9az68.cn-hongkong.maas.aliyuncs.com",
+    "IMAGE_TO_VIDEO_ENDPOINT": "https://ws-onvbf4hhlgd6vqbq.cn-beijing.maas.aliyuncs.com",
     "RELEASE_VERSION": "dev"
   },
 
