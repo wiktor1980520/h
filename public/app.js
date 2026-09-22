@@ -526,27 +526,14 @@ async function loadModels() {
         ${cover ? `<div class="model-cover"><img src="${mediaSrc({ kind: 'r2', value: cover })}" loading="lazy" /></div>` : '<div class="model-cover empty-cover">暂无照片</div>'}
         <div class="model-name">${esc(m.name)}</div>
         <div class="sub">${m.photoKeys.length} 张照片 · ${esc(m.createdAt.slice(0, 10))}</div>
-        <div class="row">
-          <button type="button" class="btn primary sm" data-use-model="${m.id}">用于新任务</button>
-        </div>
       </div>`;
     })
     .join('');
-  // 整卡可点击查看详情（按钮冒泡自行停止）
+  // 整卡可点击查看详情
   box.querySelectorAll('.model-card').forEach((card) =>
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('button')) return;
+    card.addEventListener('click', () => {
       const m = models.find((x) => x.id === card.dataset.openModel);
       if (m) openModelDetailModal(m);
-    }),
-  );
-  box.querySelectorAll('[data-use-model]').forEach((b) =>
-    b.addEventListener('click', () => {
-      const m = models.find((x) => x.id === b.dataset.useModel);
-      if (!m) return;
-      pendingPersonRefs = m.photoKeys.map((k) => ({ kind: 'r2', value: k }));
-      showToast(`已选用「${m.name}」的照片，去新建任务提交`);
-      location.hash = '#/new';
     }),
   );
 }
@@ -824,6 +811,7 @@ function openPersonPicker() {
       </div>
       <div class="modal-body">
         <div class="tab-pane" data-pane="models">
+          <input id="picker-search" class="picker-search-input" type="text" placeholder="搜索模特姓名…" autocomplete="off" />
           <div class="picker-models"><div class="loading sm">载入模特中…</div></div>
         </div>
         <div class="tab-pane hidden" data-pane="upload">
@@ -873,16 +861,30 @@ function openPersonPicker() {
     up.value = '';
   });
 
+  // 搜索模特：按姓名实时过滤（会重新渲染 picker-models）
+  const searchEl = overlay.querySelector('#picker-search');
+  searchEl.addEventListener('input', () => {
+    const kw = searchEl.value.trim().toLowerCase();
+    const all = overlay.__pickerModels || [];
+    renderPickerBox(overlay, kw ? all.filter((m) => m.name.toLowerCase().includes(kw)) : all);
+  });
+
   loadPickerModels(overlay);
 }
 
 async function loadPickerModels(overlay) {
+  const res = await api('/api/models');
+  const models = overlay.__pickerModels = res.data?.models ?? [];
+  const kw = (overlay.querySelector('#picker-search')?.value || '').trim().toLowerCase();
+  renderPickerBox(overlay, kw ? models.filter((m) => m.name.toLowerCase().includes(kw)) : models);
+}
+
+/** 把（可已按关键字过滤的）模特列表渲染进 picker */
+function renderPickerBox(overlay, models) {
   const box = overlay.querySelector('.picker-models');
   if (!box) return;
-  const res = await api('/api/models');
-  const models = res.data?.models ?? [];
   if (!models.length) {
-    box.innerHTML = '<div class="empty">暂无模特，可切换到「上传照片」直接添加</div>';
+    box.innerHTML = '<div class="empty">暂无匹配的模特，可切换「上传照片」直接添加</div>';
     return;
   }
   box.innerHTML = models
