@@ -245,7 +245,9 @@ code { background: rgba(10, 102, 255, 0.08); padding: 1px 7px; border-radius: 7p
 .job-row .job-title { font-size: 13px; }
 .job-row .jr-log { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .job-row .badge { justify-self: start; }
-.job-row .jr-time { font-size: 12px; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.job-row .jr-time { font-size: 12px; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; line-height: 1.4; }
+.job-row .jr-time .t-date { font-weight: 550; }
+.job-row .jr-time .t-clock { color: var(--text-3); font-size: 11px; }
 .job-row .jr-ops { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
 .job-row .thumb.ph { width: 46px; height: 46px; }
 @media (max-width: 680px) {

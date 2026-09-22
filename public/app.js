@@ -3,6 +3,7 @@ const $ = (sel, root = document) => root.querySelector(sel);
 
 const STAGE_ORDER = ['init', 'parse', 'tryon', 'video', 'publish', 'done'];
 const PLATFORM_LABEL = { douyin: '抖音', xiaohongshu: '小红书', weixin: '视频号', instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
+const STATUS_LABEL = { queued: '排队中', running: '进行中', succeeded: '已完成', failed: '失败', canceled: '已取消', processed: '已生成', published: '已发布', pending: '待处理', manual: '待发布', init: '初始化', parse: '解析中', tryon: '试穿中', video: '生成视频', publish: '发布中', done: '完成' };
 const ACCESS_KEY = sessionStorage.getItem('app_access_key') || '';
 
 let configRevealed = false; // 配置页"查看明文"开关
@@ -344,6 +345,9 @@ function jobRow(job) {
         : `<span class="thumb ph"></span>`;
   const canCancel = ['queued', 'running'].includes(job.status);
   const canPublishRow = job.status === 'succeeded' && !!job.video?.output?.value;
+  const ts = time(job.updatedAt || job.createdAt);
+  const tDate = ts.slice(0, 10);
+  const tClock = ts.slice(11);
   return `
     <div class="job-row job-item" data-id="${job.id}">
       ${th}
@@ -351,8 +355,11 @@ function jobRow(job) {
         <div class="job-title">${esc(job.parsed?.title ?? job.id.slice(0, 8))}</div>
         <div class="sub jr-log">${esc(last) || '…'}</div>
       </div>
-      <span class="badge ${job.status}">${job.status}</span>
-      <div class="sub jr-time">${time(job.updatedAt || job.createdAt)}</div>
+      <span class="badge ${job.status}" title="状态">${STATUS_LABEL[job.status] ?? esc(job.status)}</span>
+      <div class="jr-time" title="最近更新 ${ts}">
+        <span class="t-date">${tDate}</span>
+        <span class="t-clock">${tClock}</span>
+      </div>
       <div class="jr-ops">
         ${canPublishRow ? `<button class="publish-quick" data-publish="${job.id}" title="发布到平台">发布</button>` : ''}
         ${canCancel ? `<button class="cancel-quick" data-cancel="${job.id}" title="终止任务">✕</button>` : ''}
@@ -404,7 +411,7 @@ function recycleItemHtml(job) {
     <div class="job-item">
       <div class="job-item-body">
         <div class="job-title">${esc(job.parsed?.title ?? job.id.slice(0, 8))}</div>
-        <span class="badge ${job.status}">${job.status}</span>
+        <span class="badge ${job.status}">${STATUS_LABEL[job.status] ?? esc(job.status)}</span>
         <div class="sub">${esc(last) || time(job.createdAt)}</div>
       </div>
       <div class="item-ops">
@@ -1070,7 +1077,7 @@ function paintJobDetail(view, job) {
     <section class="hero">
       <div><h1>${esc(job.parsed?.title ?? job.id.slice(0, 8))}</h1><p class="sub">${time(job.createdAt)} · ${esc(job.id.slice(0, 8))}</p></div>
       <div class="hero-actions">
-        <span class="badge big ${job.status}">${job.status}</span>
+        <span class="badge big ${job.status}">${STATUS_LABEL[job.status] ?? esc(job.status)}</span>
         ${canCancel ? '<button class="btn ghost sm" id="cancel-job">终止任务</button>' : ''}
         <button class="btn danger sm" id="del-job">删除任务</button>
       </div>
