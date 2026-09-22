@@ -134,11 +134,13 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
         pushLog(current, 'video', 'info', `轮询 ${attempt}: ${status}`);
         await store.save(current).catch(() => {});
       });
-      const prompt = composePrompt({
-        title: current.parsed?.title,
-        category: parsed?.category,
-        duration: current.options.duration,
-      });
+      const prompt =
+        (current.options.customPrompt ?? '').trim() ||
+        composePrompt({
+          title: current.parsed?.title,
+          category: parsed?.category,
+          duration: current.options.duration,
+        });
       const { taskId } = await gen.submit({
         tryOnImageKey: tryOnKey,
         options: current.options,

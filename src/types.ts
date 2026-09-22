@@ -24,6 +24,8 @@ export interface VideoOptions {
   resolution: Resolution;
   duration: number; // 秒
   withSound: boolean;
+  /** 用户自定义图生视频提示词（非空则优先级高于自动生成） */
+  customPrompt?: string;
   /** true=生成完成后不自动发布，由用户在页面手动触发发布 */
   manualPublish?: boolean;
 }

@@ -4,12 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AI 换装工作室</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?__APP_VERSION__" />
   </head>
   <body>
     <nav class="topbar">
-      <a class="brand" href="#/dashboard">✨ AI 换装工作室</a>
-      <div class="nav-links">
+      <a class="brand" href="#/dashboard">
+        <span class="brand-logo">✦</span>
+        <span class="brand-text">AI 换装工作室</span>
+      </a>
+      <div class="nav-links" id="nav-links">
+        <span class="nav-indicator" id="nav-indicator" aria-hidden="true"></span>
         <a href="#/dashboard" data-nav="dashboard">看板</a>
         <a href="#/new" data-nav="new">新建任务</a>
         <a href="#/models" data-nav="models">模特库</a>
@@ -18,13 +22,16 @@
       </div>
     </nav>
 
+    <div id="guide-root"></div>
+
     <main id="view" class="app"></main>
 
     <footer class="app-footer">
+      <span class="footer-brand">AI 换装工作室 · 人物图 × 商品 → 15 秒试穿短视频</span>
       <span id="version-badge" class="version-badge" title="当前发布版本"></span>
       <span class="footer-author">合作/支持：<a href="mailto:service@1024byte.net">service@1024byte.net</a></span>
     </footer>
 
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/app.js?__APP_VERSION__"></script>
   </body>
 </html>

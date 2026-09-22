@@ -73,18 +73,22 @@ function esc(s) {
 function escAttr(s) {
   return esc(s);
 }
-function showToast(msg) {
+function showToast(msg, type = 'ok') {
   let t = $('#toast');
   if (!t) {
     t = document.createElement('div');
     t.id = 'toast';
     document.body.appendChild(t);
   }
+  t.className = type || '';
   t.textContent = msg;
   t.classList.add('show');
   t.style.opacity = '1';
   clearTimeout(t._h);
-  t._h = setTimeout(() => (t.style.opacity = '0'), 2200);
+  t.dataset.hide = String(t._h = setTimeout(() => {
+    t.classList.remove('show');
+    t.style.opacity = '0';
+  }, 2200));
 }
 function time(s) {
   return (s || '').slice(0, 19).replace('T', ' ');
@@ -179,9 +183,21 @@ function navigate() {
   for (const a of document.querySelectorAll('[data-nav]')) {
     a.classList.toggle('active', path === a.dataset.nav);
   }
+  updateNavIndicator();
   const handler = routes[path] || renderDashboard;
   handler(arg);
   renderVersion();
+}
+
+/** 让顶部导航的高亮"指示条"跟随当前页面（滑动过渡由 CSS 承担） */
+function updateNavIndicator() {
+  const nav = document.querySelector('#nav-links');
+  const ind = document.querySelector('#nav-indicator');
+  const active = nav?.querySelector('a.active');
+  if (!nav || !ind || !active) { if (ind) ind.style.opacity = '0'; return; }
+  ind.style.opacity = '1';
+  ind.style.transform = `translateX(${active.offsetLeft - 2}px)`;
+  ind.style.width = `${active.offsetWidth + 4}px`;
 }
 
 /** 顶栏展示当前发布版本号（来自 /api/settings 的 RELEASE_VERSION） */
@@ -197,6 +213,43 @@ async function renderVersion() {
 /* ---------------- 看板 ---------------- */
 let dashTimer = null;
 let dashSig = null; // 任务状态签名（id→status），用于"状态未变不重刷"
+
+/** 统计数字滚动动画（仅在数值变化时播放） */
+function animateStatNums(root) {
+  root.querySelectorAll('.stat-num').forEach((n) => {
+    const target = parseInt(String(n.textContent).replace(/\D/g, ''), 10) || 0;
+    const cur = Number(n.dataset.v || 0);
+    if (target === cur) return;
+    n.dataset.v = target;
+    const dur = 680;
+    const start = performance.now();
+    const step = (now) => {
+      const k = Math.min((now - start) / dur, 1);
+      const ease = 1 - Math.pow(1 - k, 3);
+      n.textContent = Math.round(cur + (target - cur) * ease);
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+/** 首次进入看板展示一条可关闭的引导条（仅一次，用 localStorage 记录） */
+function maybeShowGuide() {
+  const root = document.querySelector('#guide-root');
+  if (!root) return;
+  try {
+    if (localStorage.getItem('guide_dashboard_shown')) return;
+    localStorage.setItem('guide_dashboard_shown', '1');
+  } catch (_) { return; }
+  const bar = document.createElement('div');
+  bar.id = 'guide-bar';
+  bar.innerHTML = `
+    <span class="guide-icon">✦</span>
+    <div class="guide-text">在<b>新建任务</b>中通过「＋ 添加人物图片」选择模特库照片或直接上传，粘贴商品链接，即可自动生成 15 秒试穿短视频并发布到目标平台。</div>
+    <button class="guide-close" aria-label="关闭">×</button>`;
+  bar.querySelector('.guide-close').addEventListener('click', () => bar.remove());
+  root.appendChild(bar);
+}
 
 async function renderDashboard() {
   const view = $('#view');
@@ -216,18 +269,29 @@ async function renderDashboard() {
       <a class="btn primary" href="#/new">＋ 新建任务</a>
     </section>
     ${pats ? `<div class="platforms strip">${pats}</div>` : ''}
-    <section class="stats" id="dash-stats"><div class="loading sm">…</div></section>
+    <section class="sk-grid" id="dash-stats">
+      <div class="skeleton sk-stat"></div>
+      <div class="skeleton sk-stat"></div>
+      <div class="skeleton sk-stat"></div>
+      <div class="skeleton sk-stat"></div>
+    </section>
     <section class="card">
       <header class="list-head">
         <h2>最近任务 <span id="dash-live" class="live"></span></h2>
         <a class="btn ghost" href="#/job">查看全部</a>
       </header>
-      <div id="dash-jobs" class="jobs-table"><div class="loading sm">载入中…</div></div>
+      <div id="dash-jobs" class="jobs-table">
+        <div class="sk-row"><span class="skeleton sk-thumb"></span><div class="jr-main"><span class="skeleton sk-line w60" style="display:block"></span></div><span class="skeleton sk-line" style="width:56px"></span><span class="skeleton sk-line" style="width:70px"></span></div>
+        <div class="sk-row"><span class="skeleton sk-thumb"></span><div class="jr-main"><span class="skeleton sk-line w60" style="display:block"></span></div><span class="skeleton sk-line" style="width:56px"></span><span class="skeleton sk-line" style="width:70px"></span></div>
+        <div class="sk-row"><span class="skeleton sk-thumb"></span><div class="jr-main"><span class="skeleton sk-line w60" style="display:block"></span></div><span class="skeleton sk-line" style="width:56px"></span><span class="skeleton sk-line" style="width:70px"></span></div>
+      </div>
     </section>`;
 
+  renderVersion();
   await refreshDashboardSlice(true);
   if (dashTimer) clearInterval(dashTimer);
   dashTimer = setInterval(() => refreshDashboardSlice(false), 4000);
+  maybeShowGuide();
 }
 
 /** 后台刷新：仅刷新任务列表（stats=true 时连统计一并首次渲染）；不重建整页，避免任务执行中反复整页刷新 */
@@ -254,7 +318,7 @@ async function refreshDashboardSlice(updateStats) {
     ]
       .map(([l, v, c]) => `<div class="stat ${c}"><span class="stat-num">${v}</span><span class="stat-label">${l}</span></div>`)
       .join('');
-    if (statsEl) statsEl.innerHTML = cards;
+    if (statsEl) { statsEl.innerHTML = cards; animateStatNums(statsEl); }
   }
   // 只刷新状态：整组状态签名未变化时（所有任务都停在终态/未推进）不重刷列表，避免已完成任务反复重渲
   const sig = items.map((j) => j.status).join('|');
@@ -656,22 +720,14 @@ function renderNew() {
           </div>
         </div>
         <div class="field">
-          <label>发布方式</label>
+          <label>图生视频提示词</label>
           <div class="radio-row">
-            <label class="pill"><input type="radio" name="pubmode" value="auto" />生成后自动发布</label>
-            <label class="pill"><input type="radio" name="pubmode" value="manual" checked />生成后手动发布（推荐）</label>
+            <label class="pill"><input type="radio" name="promptmode" value="auto" checked />自动生成（推荐）</label>
+            <label class="pill"><input type="radio" name="promptmode" value="custom" />自定义</label>
           </div>
-        </div>
-        <div class="field">
-          <label>发布到</label>
-          <div class="radio-row">
-            <label class="pill"><input type="checkbox" class="pub-check" value="douyin" checked />抖音（挂车）</label>
-            <label class="pill"><input type="checkbox" class="pub-check" value="xiaohongshu" />小红书</label>
-            <label class="pill"><input type="checkbox" class="pub-check" value="weixin" />视频号</label>
-            <label class="pill"><input type="checkbox" class="pub-check" value="instagram" />Instagram</label>
-            <label class="pill"><input type="checkbox" class="pub-check" value="facebook" />Facebook</label>
-            <label class="pill"><input type="checkbox" class="pub-check" value="tiktok" />TikTok</label>
-          </div>
+          <p class="sub" id="prompt-desc">将根据商品标题、品类与所选时长自动生成，例如：</p>
+          <div class="prompt-preview" id="prompt-preview"></div>
+          <textarea id="prompt-custom" class="hidden" rows="4" placeholder="输入你的图生视频提示词，将替代自动生成的提示词…"></textarea>
         </div>
         <div class="actions">
           <button type="submit" class="btn primary">提交生成</button>
@@ -685,7 +741,28 @@ function renderNew() {
     $('#garment-value').placeholder = e.target.value === 'link' ? 'https://item.jd.com/… 或商品图链接' : 'https://…/garment.jpg';
   });
   $('#job-form').addEventListener('submit', onSubmitJob);
+
+  // 图生视频提示词：自动（预览默认） / 自定义（文本域编辑）
+  syncPromptPreview();
+  const syncPromptMode = () => {
+    const custom = document.querySelector('input[name="promptmode"]:checked')?.value === 'custom';
+    $('#prompt-custom').classList.toggle('hidden', !custom);
+    $('#prompt-desc').classList.toggle('hidden', custom);
+    $('#prompt-preview').classList.toggle('hidden', custom);
+  };
+  document.querySelectorAll('input[name="promptmode"]').forEach((r) => r.addEventListener('change', syncPromptMode));
+  $('#duration').addEventListener('change', syncPromptPreview);
+  syncPromptMode();
+
   renderThumbs(); // 展示从模特库带入的照片
+}
+
+/** 渲染"自动生成"的图生视频提示词示例（与后端 composePrompt 模板保持一致） */
+function syncPromptPreview() {
+  const el = $('#prompt-preview');
+  if (!el) return;
+  const d = $('#duration')?.value || '15';
+  el.textContent = `【女装电商展示】模特身着连衣裙（商品：标题，提交后自动填充），自然行走转身展示穿着效果，背景简洁干净，光线均匀，${d}秒运镜流畅，突出服装版型与细节，画面质感真实。`;
 }
 
 function renderThumbs() {
@@ -855,17 +932,19 @@ async function onSubmitJob(e) {
     msg.textContent = '请先上传至少一张人物图片';
     return;
   }
-  const publish = [...document.querySelectorAll('.pub-check:checked')].map((c) => c.value);
-  const manual = (document.querySelector('input[name="pubmode"]:checked')?.value ?? 'manual') === 'manual';
+  const promptCustom = $('#prompt-custom').value.trim();
   const body = {
     personImages: newJobState.personRefs,
     garmentType: $('#garment-type').value,
     garmentValue: $('#garment-value').value.trim(),
     resolution: $('#resolution').value,
     duration: Number($('#duration').value),
-    manualPublish: manual,
-    publish,
+    manualPublish: true, // 生成后由用户在任务详情页手动发布（发布平台取自全局配置）
   };
+  // 仅在"自定义"模式下有非空输入时，才把用户提示词传给后端（否则自动生成）
+  if ((document.querySelector('input[name="promptmode"]:checked')?.value ?? 'auto') === 'custom' && promptCustom) {
+    body.prompt = promptCustom;
+  }
   msg.className = 'msg';
   msg.textContent = '提交中…';
   const res = await api('/api/jobs', { method: 'POST', body: JSON.stringify(body) });
