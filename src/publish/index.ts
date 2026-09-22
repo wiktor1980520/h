@@ -6,7 +6,12 @@ export interface PublishRequest {
   videoR2Key: string;
   coverR2Key?: string;
   title: string;
+  desc?: string;
   tags?: string[];
+  /** 挂车商品 ID（抖音/视频号带货用） */
+  productId?: string;
+  /** 账号绑定（如抖音 open_id） */
+  accountId?: string;
 }
 
 export interface PublishResult {

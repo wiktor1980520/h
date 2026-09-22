@@ -207,7 +207,15 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
           target.error = '平台未配置或未就绪';
           continue;
         }
-        const res = await pub.publish({ jobId, videoR2Key: videoKey, title: current.parsed?.title ?? `AI 换装短视频 ${jobId}` });
+        const res = await pub.publish({
+          jobId,
+          videoR2Key: videoKey,
+          title: target.title ?? current.parsed?.title ?? `AI 换装短视频 ${jobId}`,
+          desc: target.desc,
+          tags: target.tags,
+          productId: target.productId,
+          accountId: target.accountId,
+        });
         if (res.status === 'published') {
           target.status = 'published';
           target.externalId = res.externalId;

@@ -42,7 +42,7 @@ export class WeixinChannelsPublisher implements Publisher {
       body: JSON.stringify({
         media_id: uploadJson.media_id,
         title: req.title,
-        desc: req.tags?.join(' '),
+        desc: req.desc ?? req.tags?.join(' '),
       }),
     });
     const createJson = (await createResp.json().catch(() => ({}))) as {

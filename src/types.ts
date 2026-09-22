@@ -45,6 +45,14 @@ export interface PublishTarget {
   url?: string;
   error?: string;
   publishedAt?: string;
+  // 发布内容自定义（可按平台分别配置）
+  title?: string;
+  desc?: string;
+  tags?: string[];
+  /** 挂车商品 ID（抖音/视频号带货用） */
+  productId?: string;
+  /** 平台账号绑定（如抖音 open_id），留空用全局 access_token 默认发布 */
+  accountId?: string;
 }
 
 export interface ParsedGarment {

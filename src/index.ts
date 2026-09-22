@@ -1,11 +1,12 @@
 // index.ts — Worker 入口：静态资源 + REST API + R2 媒体回源
 import type { Env } from './env';
-import type { Job, MediaRef } from './types';
-import { emptyJob, newJobId } from './types';
+import type { Job, MediaRef, Platform } from './types';
+import { emptyJob, newJobId, pushLog } from './types';
 import { JobStore } from './store/d1';
 import { ConfigStore, CONFIG_KEYS, overlayConfig, getAuthPassword } from './store/config';
 import { MediaStore } from './storage/r2';
 import { PublisherRegistry } from './publish';
+import type { PublishRequest } from './publish';
 import { DouyinPublisher } from './publish/douyin';
 import { WeixinChannelsPublisher } from './publish/weixin';
 import { XiaohongshuPublisher } from './publish/xiaohongshu';
@@ -14,7 +15,7 @@ export { HuangtoolsPipelineWorkflow } from './workflow/pipeline';
 
 const CORS = {
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
+  'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS',
   'access-control-allow-headers': 'content-type,authorization',
 };
 
@@ -233,6 +234,10 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
   if (publishMatch && request.method === 'POST') {
     return publishJob(publishMatch[1], env, store);
   }
+  // PUT — 修改指定发布平台的发布内容（标题/文案/标签/挂车商品/账号）
+  if (publishMatch && request.method === 'PUT') {
+    return savePublishContent(publishMatch[1], request, store);
+  }
 
   if (p.endsWith('/cancel') && request.method === 'POST') {
     const id = p.split('/').filter(Boolean).at(-2);
@@ -379,6 +384,50 @@ async function uploadFile(request: Request, env: Env): Promise<Response> {
   return json({ ref, key }, 201);
 }
 
+/** PUT /api/jobs/:id/publish — 保存指定发布平台的发布内容（标题/文案/标签/挂车商品/账号） */
+async function savePublishContent(id: string, request: Request, store: JobStore): Promise<Response> {
+  const job = await store.get(id);
+  if (!job) return notFound();
+  const body = (await request.json().catch(() => ({}))) as PublishContentBody;
+  const target = job.publish.find((t) => t.platform === body.platform);
+  if (!target) return json({ error: '该平台未选择发布' }, 404);
+  if (target.status === 'published') return json({ error: '该平台已发布，无法修改内容' }, 400);
+  if ('title' in body) target.title = body.title ?? undefined;
+  if ('desc' in body) target.desc = body.desc ?? undefined;
+  if ('tags' in body) target.tags = Array.isArray(body.tags) ? body.tags.map(String).filter(Boolean) : undefined;
+  if ('productId' in body) target.productId = body.productId ?? undefined;
+  if ('accountId' in body) target.accountId = body.accountId ?? undefined;
+  pushLog(job, 'publish', 'info', `已更新 ${body.platform} 发布内容`);
+  await store.save(job);
+  return json({
+    ok: true,
+    platform: target.platform,
+    content: { title: target.title, desc: target.desc, tags: target.tags, productId: target.productId, accountId: target.accountId },
+  });
+}
+
+interface PublishContentBody {
+  platform: Platform;
+  title?: string;
+  desc?: string;
+  tags?: string[];
+  productId?: string;
+  accountId?: string;
+}
+
+/** 由发布目标 + 兜底标题生成发布请求 */
+function publishRequestFor(job: Job, t: Job['publish'][number], videoR2Key: string): PublishRequest {
+  return {
+    jobId: job.id,
+    videoR2Key,
+    title: t.title ?? job.parsed?.title ?? `AI 换装短视频 ${job.id}`,
+    desc: t.desc,
+    tags: t.tags,
+    productId: t.productId,
+    accountId: t.accountId,
+  };
+}
+
 /** POST /api/jobs/:id/publish — 生成完成后手动触发发布（重发 pending/manual/failed 目标） */
 async function publishJob(id: string, env: Env, store: JobStore): Promise<Response> {
   const job = await store.get(id);
@@ -402,7 +451,7 @@ async function publishJob(id: string, env: Env, store: JobStore): Promise<Respon
       out.push({ platform: t.platform, status: 'failed', error: t.error });
       continue;
     }
-    const res = await pub.publish({ jobId: job.id, videoR2Key: job.video!.output!.value, title: job.parsed?.title ?? `AI 换装短视频 ${job.id}` });
+    const res = await pub.publish(publishRequestFor(job, t, job.video!.output!.value));
     if (res.status === 'published') {
       t.status = 'published';
       t.externalId = res.externalId;

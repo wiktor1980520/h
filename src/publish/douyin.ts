@@ -32,7 +32,7 @@ export class DouyinPublisher implements Publisher {
       headers: { authorization: `Bearer ${token}` },
       body: buildMultipart([
         { name: 'video', filename: 'video.mp4', contentType: 'video/mp4', data: videoBytes },
-        { name: 'open_id', value: '' }, // 按需：挂车/发布需 open_id
+        { name: 'open_id', value: req.accountId ?? '' }, // 账号绑定：自定义 open_id，留空走默认
         { name: 'access_token', value: token },
       ]),
     });
@@ -46,9 +46,9 @@ export class DouyinPublisher implements Publisher {
     // 2) 创建视频（挂车：附加 item_info 含商品 ecom）
     const body = JSON.stringify({
       video_id: videoId,
-      text: req.title,
+      text: req.desc || req.title,
       // 挂车：若已配置电商商品/星图，可在此注入 ecom_carousel / union_id
-      ecom_carousel: {},
+      ecom_carousel: req.productId ? { product_ids: [req.productId] } : {},
     });
     const createResp = await fetch(`${API}/video/create/`, {
       method: 'POST',

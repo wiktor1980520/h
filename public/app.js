@@ -43,6 +43,9 @@ function forceLogout(msg) {
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+function escAttr(s) {
+  return esc(s);
+}
 function time(s) {
   return (s || '').slice(0, 19).replace('T', ' ');
 }
@@ -526,13 +529,31 @@ function paintJobDetail(view, job) {
     (job.publish || [])
       .map((t) => {
         const can = canPublish && t.status !== 'published';
+        const pl = t.platform;
         return `
         <div class="pub-row">
-          <div><div class="pub-name">${platformLabel(t.platform)}</div>
-            <div class="sub">${t.error ? esc(t.error) : ''}</div></div>
+          <div>
+            <div class="pub-name">${platformLabel(pl)}</div>
+            <div class="sub">${esc(t.title ?? (job.parsed?.title ?? ''))}${(t.accountId || t.productId ? ` · 账号${esc(t.accountId ?? '默认')}` : '')}${t.productId ? ` · 挂车${esc(t.productId)}` : ''}${t.error ? ' · ' + esc(t.error) : ''}</div>
+          </div>
           <span class="badge ${t.status}">${t.status}</span>
-          ${can ? `<button class="btn sm" data-pub="${t.platform}">发布</button>` : ''}
-        </div>`;
+          ${can ? `<button class="btn sm" data-pub="${pl}">发布</button>
+                   <button class="btn ghost sm" data-toggle-edit="${pl}">编辑内容</button>` : ''}
+        </div>
+        ${can ? `
+        <div class="pub-edit" id="pub-edit-${pl}" hidden>
+          <div class="field"><label>标题</label><input class="pet" data-p="${pl}" data-k="title" value="${escAttr(t.title ?? '')}" placeholder="默认用商品标题" /></div>
+          <div class="field"><label>文案</label><textarea class="pet" data-p="${pl}" data-k="desc" rows="2" placeholder="视频正文 / 评论区引导文案">${esc(t.desc ?? '')}</textarea></div>
+          <div class="field"><label>标签（逗号分隔）</label><input class="pet" data-p="${pl}" data-k="tags" value="${escAttr((t.tags ?? []).join(', '))}" placeholder="#穿搭 #试穿" /></div>
+          <div class="row">
+            <div class="field"><label>挂车商品 ID</label><input class="pet" data-p="${pl}" data-k="productId" value="${escAttr(t.productId ?? '')}" placeholder="抖音/视频号带货商品ID" /></div>
+            <div class="field"><label>账号（open_id）</label><input class="pet" data-p="${pl}" data-k="accountId" value="${escAttr(t.accountId ?? '')}" placeholder="留空用默认账号" /></div>
+          </div>
+          <div class="rows-actions">
+            <button type="button" class="btn primary sm" data-save-pub="${pl}">保存内容</button>
+            <span class="puberr" id="puberr-${pl}"></span>
+          </div>
+        </div>` : ''}`;
       })
       .join('') || '<div class="empty">未选择发布平台</div>';
 
@@ -572,12 +593,45 @@ function paintJobDetail(view, job) {
     </section>`;
 
   view.querySelectorAll('[data-pub]').forEach((b) => b.addEventListener('click', () => triggerPublish(job.id, b.dataset.pub)));
+  view.querySelectorAll('[data-toggle-edit]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const panel = view.querySelector(`#pub-edit-${b.dataset.toggleEdit}`);
+      if (panel) panel.hidden = !panel.hidden;
+    }),
+  );
+  view.querySelectorAll('[data-save-pub]').forEach((b) =>
+    b.addEventListener('click', () => savePublishContent(job.id, b.dataset.savePub, view)),
+  );
   const pubAll = view.querySelector('#pub-all');
   if (pubAll) pubAll.addEventListener('click', () => triggerPublish(job.id));
   const cancelBtn = view.querySelector('#cancel-job');
   if (cancelBtn) cancelBtn.addEventListener('click', () => confirmCancel(job.id));
   const delBtn = view.querySelector('#del-job');
   if (delBtn) delBtn.addEventListener('click', () => confirmDelete(job.id));
+}
+
+/** 保存某发布平台的自定义发布内容（标题/文案/标签/挂车商品/账号） */
+async function savePublishContent(id, platform, view) {
+  const payload = { platform };
+  const panel = view.querySelector(`#pub-edit-${platform}`);
+  panel.querySelectorAll('.pet[data-p]').forEach((input) => {
+    const k = input.dataset.k;
+    const v = input.value.trim();
+    if (k === 'tags') {
+      payload.tags = v ? v.split(/[,，\s#]+/).map((x) => x.trim()).filter(Boolean) : undefined;
+    } else {
+      payload[k] = v || undefined;
+    }
+  });
+  const errEl = panel.querySelector(`#puberr-${platform}`);
+  errEl.textContent = '保存中…';
+  const res = await api(`/api/jobs/${id}/publish`, { method: 'PUT', body: JSON.stringify(payload) });
+  if (!res.ok) {
+    errEl.textContent = res.data.error ?? '保存失败';
+    return;
+  }
+  errEl.textContent = '已保存';
+  renderJobDetail(id); // 刷新展示
 }
 
 async function confirmDelete(id) {

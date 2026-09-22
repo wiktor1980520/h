@@ -32,6 +32,8 @@ export class XiaohongshuPublisher implements Publisher {
         task: 'publish-xiaohongshu',
         videoUrl: videoURL,
         title: req.title,
+        desc: req.desc,
+        tags: req.tags,
       }),
     });
     if (!resp.ok) {
