@@ -108,6 +108,7 @@ const routes = {
   new: renderNew,
   config: renderConfig,
   recycle: renderRecycle,
+  jobs: renderJobs,
   job: renderJobDetail,
 };
 
@@ -252,6 +253,59 @@ function maybeShowGuide() {
   root.appendChild(bar);
 }
 
+/* ---------------- 全部任务 ---------------- */
+const JOB_FILTERS = { all: '全部', queued: '排队中', running: '进行中', succeeded: '已完成', failed: '失败', canceled: '已取消' };
+
+function renderJobs() {
+  if (dashTimer) clearInterval(dashTimer);
+  dashTimer = null; dashSig = null;
+  const view = $('#view');
+  let FILTER = 'all';
+  let jobs = [];
+  view.innerHTML = `
+    <a class="back" href="#/dashboard">← 返回看板</a>
+    <section class="hero">
+      <div><h1>全部任务</h1><p class="sub">共 <b id="jobs-count">0</b> 条</p></div>
+    </section>
+    <section class="card">
+      <div class="filter-chips" id="jobs-filter"></div>
+      <div id="jobs-list" class="jobs-table"><div class="loading sm">载入中…</div></div>
+    </section>`;
+  const countEl = $('#jobs-count');
+  const listEl = $('#jobs-list');
+  const filterEl = $('#jobs-filter');
+
+  filterEl.innerHTML = Object.entries(JOB_FILTERS)
+    .map(([k, l]) => `<button type="button" class="chip-x${k === FILTER ? ' on' : ''}" data-f="${k}">${l}</button>`)
+    .join('');
+  filterEl.addEventListener('click', (e) => {
+    const c = e.target.closest('.chip-x');
+    if (!c) return;
+    FILTER = c.dataset.f;
+    filterEl.querySelectorAll('.chip-x').forEach((x) => x.classList.toggle('on', x === c));
+    paint();
+  });
+
+  const paint = () => {
+    const shown = FILTER === 'all' ? jobs : jobs.filter((j) => j.status === FILTER);
+    countEl.textContent = shown.length;
+    listEl.innerHTML = shown.map(jobRow).join('') || '<div class="empty">暂无任务</div>';
+  };
+
+  const tick = async () => {
+    const res = await api('/api/jobs?limit=500');
+    const items = res.data?.items ?? [];
+    const sig = items.map((j) => j.status).join('|');
+    if (sig !== (view.__jobsSig || '')) {
+      view.__jobsSig = sig;
+      jobs = items;
+      paint();
+    }
+  };
+  tick();
+  dashTimer = setInterval(tick, 6000);
+}
+
 async function renderDashboard() {
   const view = $('#view');
   view.innerHTML = `<div class="loading">载入中…</div>`;
@@ -279,7 +333,7 @@ async function renderDashboard() {
     <section class="card">
       <header class="list-head">
         <h2>最近任务 <span id="dash-live" class="live"></span></h2>
-        <a class="btn ghost" href="#/job">查看全部</a>
+        <a class="btn ghost" href="#/jobs">查看全部</a>
       </header>
       <div id="dash-jobs" class="jobs-table">
         <div class="sk-row"><span class="skeleton sk-thumb"></span><div class="jr-main"><span class="skeleton sk-line w60" style="display:block"></span></div><span class="skeleton sk-line" style="width:56px"></span><span class="skeleton sk-line" style="width:70px"></span></div>
