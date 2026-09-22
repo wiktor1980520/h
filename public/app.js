@@ -129,6 +129,7 @@ function renderLogin() {
 function navigate() {
   if (document.body.classList.contains('authed') && !ACCESS_KEY) return;
   if (dashTimer) clearInterval(dashTimer); // 离开看板时停止后台轮询并重置
+  dashTimer = null; dashSig = null;
   const hash = (location.hash || '#/dashboard').replace(/^#/, '');
   const [path, arg] = hash.slice(1).split('/');
   for (const a of document.querySelectorAll('[data-nav]')) {
@@ -151,6 +152,7 @@ async function renderVersion() {
 
 /* ---------------- 看板 ---------------- */
 let dashTimer = null;
+let dashSig = null; // 任务状态签名（id→status），用于"状态未变不重刷"
 
 async function renderDashboard() {
   const view = $('#view');
@@ -210,6 +212,13 @@ async function refreshDashboardSlice(updateStats) {
       .join('');
     if (statsEl) statsEl.innerHTML = cards;
   }
+  // 只刷新状态：整组状态签名未变化时（所有任务都停在终态/未推进）不重刷列表，避免已完成任务反复重渲
+  const sig = items.map((j) => j.status).join('|');
+  if (!updateStats && sig === dashSig) {
+    if (live) live.textContent = running ? `·${running} 个进行中` : '';
+    return;
+  }
+  dashSig = sig;
   if (jobsEl) jobsEl.innerHTML = items.map(jobRow).join('') || '<div class="empty">暂无任务</div>';
   if (live) live.textContent = running ? `·${running} 个进行中` : '';
 }
