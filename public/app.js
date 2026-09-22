@@ -179,13 +179,13 @@ async function renderDashboard() {
       <div id="dash-jobs" class="jobs-table"><div class="loading sm">载入中…</div></div>
     </section>`;
 
-  await refreshDashboardSlice();
+  await refreshDashboardSlice(true);
   if (dashTimer) clearInterval(dashTimer);
-  dashTimer = setInterval(refreshDashboardSlice, 4000);
+  dashTimer = setInterval(() => refreshDashboardSlice(false), 4000);
 }
 
-/** 后台刷新：只更新统计与任务列表，不重建整页，避免任务执行中反复整页刷新 */
-async function refreshDashboardSlice() {
+/** 后台刷新：仅刷新任务列表（stats=true 时连统计一并首次渲染）；不重建整页，避免任务执行中反复整页刷新 */
+async function refreshDashboardSlice(updateStats) {
   const jobsEl = $('#dash-jobs');
   if (!jobsEl) {
     if (dashTimer) clearInterval(dashTimer);
@@ -195,19 +195,21 @@ async function refreshDashboardSlice() {
   const live = $('#dash-live');
   const res = await api('/api/jobs?limit=50');
   const items = res.data?.items ?? [];
-  const statusCount = { queued: 0, running: 0, succeeded: 0, failed: 0, canceled: 0 };
-  for (const j of items) statusCount[j.status] = (statusCount[j.status] || 0) + 1;
-  const total = items.length || 0;
-  const running = statusCount.running + statusCount.queued;
-  const cards = [
-    ['总任务', total, 'total'],
-    ['进行中', running, 'run'],
-    ['已完成', statusCount.succeeded + statusCount.failed + statusCount.canceled, 'ok'],
-    ['失败', statusCount.failed, 'err'],
-  ]
-    .map(([l, v, c]) => `<div class="stat ${c}"><span class="stat-num">${v}</span><span class="stat-label">${l}</span></div>`)
-    .join('');
-  if (statsEl) statsEl.innerHTML = cards;
+  const running = items.filter((j) => j.status === 'running' || j.status === 'queued').length;
+  if (updateStats) {
+    const statusCount = { queued: 0, running: 0, succeeded: 0, failed: 0, canceled: 0 };
+    for (const j of items) statusCount[j.status] = (statusCount[j.status] || 0) + 1;
+    const total = items.length || 0;
+    const cards = [
+      ['总任务', total, 'total'],
+      ['进行中', running, 'run'],
+      ['已完成', statusCount.succeeded + statusCount.failed + statusCount.canceled, 'ok'],
+      ['失败', statusCount.failed, 'err'],
+    ]
+      .map(([l, v, c]) => `<div class="stat ${c}"><span class="stat-num">${v}</span><span class="stat-label">${l}</span></div>`)
+      .join('');
+    if (statsEl) statsEl.innerHTML = cards;
+  }
   if (jobsEl) jobsEl.innerHTML = items.map(jobRow).join('') || '<div class="empty">暂无任务</div>';
   if (live) live.textContent = running ? `·${running} 个进行中` : '';
 }
