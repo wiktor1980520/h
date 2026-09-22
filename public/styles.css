@@ -324,6 +324,31 @@ code { background: rgba(10, 102, 255, 0.08); padding: 1px 7px; border-radius: 7p
 .model-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: rgba(10, 102, 255, 0.3); }
 .model-photos { display: flex; gap: 6px; overflow: auto; margin-bottom: 10px; scrollbar-width: thin; }
 .model-photos img { width: 88px; height: 118px; object-fit: cover; border-radius: 9px; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08); }
+.model-card { cursor: pointer; }
+.model-cover { height: 190px; border-radius: 13px; overflow: hidden; margin-bottom: 12px; background: var(--line-strong); }
+.model-cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s ease; }
+.model-card:hover .model-cover img { transform: scale(1.05); }
+.model-cover.empty-cover { display: grid; place-items: center; color: var(--text-2); font-size: 13px; }
+
+/* 模特详情弹框 */
+.model-detail-modal .modal-foot .btn + .btn { margin-left: 8px; }
+.model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 8px; margin-bottom: 4px; }
+.md-photo { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; cursor: zoom-in; border: 1px solid var(--line-strong); box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08); }
+.md-photo img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s ease; }
+.md-photo:hover img { transform: scale(1.08); }
+.md-info-box { margin-top: 18px; }
+.md-info-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.md-info-head h4 { margin: 0; }
+.md-info-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 18px; }
+.md-info-view .kv { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dashed var(--line-strong); padding: 6px 0; font-size: 13px; }
+.md-info-view .kv span { color: var(--text-2); }
+.md-info-view .kv b { font-weight: 600; text-align: right; }
+.md-info-form { border-top: 1px dashed var(--line-strong); padding-top: 14px; margin-top: 6px; }
+
+/* Lightbox 大图预览 */
+.lightbox { position: fixed; inset: 0; z-index: 1000; background: rgba(15, 20, 30, 0.85); display: grid; place-items: center; animation: fade 0.2s ease; padding: 20px; }
+.lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); }
+.lightbox .modal-close { position: absolute; top: 16px; right: 20px; background: rgba(255, 255, 255, 0.15); color: #fff; }
 .model-name { font-weight: 650; margin-bottom: 2px; }
 .model-info-summary { font-size: 12px; color: var(--text-2); margin: 6px 0 12px; line-height: 1.55; }
 .model-card .row { margin-top: 4px; }

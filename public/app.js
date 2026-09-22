@@ -519,23 +519,29 @@ async function loadModels() {
   const models = res.data?.models ?? [];
   if (!models.length) return (box.innerHTML = '<div class="empty">暂无模特，先新建一个</div>');
   box.innerHTML = models
-    .map(
-      (m) => `
-      <div class="model-card">
-        <div class="model-photos">
-          ${m.photoKeys.map((k) => `<img src="${mediaSrc({ kind: 'r2', value: k })}" />`).join('')}
-        </div>
+    .map((m) => {
+      const cover = m.photoKeys.length > 0 ? m.photoKeys[Math.floor(Math.random() * m.photoKeys.length)] : null;
+      return `
+      <div class="model-card" data-open-model="${m.id}">
+        ${cover ? `<div class="model-cover"><img src="${mediaSrc({ kind: 'r2', value: cover })}" loading="lazy" /></div>` : '<div class="model-cover empty-cover">暂无照片</div>'}
         <div class="model-name">${esc(m.name)}</div>
         <div class="sub">${m.photoKeys.length} 张照片 · ${esc(m.createdAt.slice(0, 10))}</div>
-        ${modelInfoSummary(m) ? `<div class="model-info-summary">${modelInfoSummary(m)}</div>` : ''}
         <div class="row">
           <button type="button" class="btn primary sm" data-use-model="${m.id}">用于新任务</button>
-          <button type="button" class="btn ghost sm" data-edit-model="${m.id}">信息</button>
+          <button type="button" class="btn ghost sm" data-view-model="${m.id}">详情</button>
           <button type="button" class="btn ghost sm" data-del-model="${m.id}">删除</button>
         </div>
-      </div>`,
-    )
+      </div>`;
+    })
     .join('');
+  // 整卡可点击查看详情（按钮冒泡自行停止）
+  box.querySelectorAll('.model-card').forEach((card) =>
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      const m = models.find((x) => x.id === card.dataset.openModel);
+      if (m) openModelDetailModal(m);
+    }),
+  );
   box.querySelectorAll('[data-use-model]').forEach((b) =>
     b.addEventListener('click', () => {
       const m = models.find((x) => x.id === b.dataset.useModel);
@@ -545,123 +551,132 @@ async function loadModels() {
       location.hash = '#/new';
     }),
   );
-  box.querySelectorAll('[data-edit-model]').forEach((b) =>
+  box.querySelectorAll('[data-view-model]').forEach((b) =>
     b.addEventListener('click', () => {
-      const m = models.find((x) => x.id === b.dataset.editModel);
-      if (m) openModelInfoModal(m);
+      const m = models.find((x) => x.id === b.dataset.viewModel);
+      if (m) openModelDetailModal(m);
     }),
   );
   box.querySelectorAll('[data-del-model]').forEach((b) =>
     b.addEventListener('click', async () => {
-      if (!confirm('删除该模特？（照片文件保留于存储）')) return;
+      const m = models.find((x) => x.id === b.dataset.delModel);
+      if (!confirm(`确认删除「${m?.name ?? ''}」？（照片文件保留于存储）`)) return;
       await api(`/api/models/${b.dataset.delModel}`, { method: 'DELETE' });
       loadModels();
     }),
   );
 }
 
-/** 简洁展示模特已填写的信息（几条非空字段），无则返回空串 */
-function modelInfoSummary(m) {
-  const picked = MODEL_INFO_FIELDS.slice(0, 8)
-    .map(([key, label]) => {
-      const v = (m.info ?? {})[key];
-      return v ? `${label}:${esc(v)}` : null;
-    })
-    .filter(Boolean)
-    .slice(0, 4);
-  return picked.length ? picked.join(' · ') : '';
-}
-
-/** 模特个人信息编辑 / 查看弹框（含关联照片管理） */
-function openModelInfoModal(model) {
+/**
+ * 模特详情弹框：九宫格照片 + 个人信息。
+ * 三个功能点：补充模特信息、补充照片、删除模特。
+ */
+function openModelDetailModal(model) {
   closeModal();
+  let photoKeys = [...(model.photoKeys || [])];
   const info = model.info ?? {};
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
-    <div class="modal modal-lg">
+    <div class="modal modal-lg model-detail-modal">
       <header class="modal-head">
-        <h3>模特信息 — ${esc(model.name)}</h3>
+        <h3>模特 — ${esc(model.name)}</h3>
         <button type="button" class="modal-close" data-close>×</button>
       </header>
       <div class="modal-body">
-        <div class="field"><label>模特姓名</label><input id="mi-name" class="pet" type="text" value="${escAttr(model.name)}" /></div>
-        <div class="model-info-grid">
-          ${MODEL_INFO_FIELDS.map(([key, label]) => `<div class="field"><label>${esc(label)}</label><input class="pet mi-f" name="${key}" type="text" value="${escAttr(info[key] ?? '')}" /></div>`).join('')}
+        <div class="field">
+          <label>照片 <span class="sub">（点击预览，底部可补充）</span></label>
+          <div class="model-grid" id="md-photos"></div>
         </div>
-        <div class="field"><label>照片（点击可删除单张）</label><div class="model-photos editable" id="mi-photos"></div></div>
-        <div class="upload-single">
-          <input id="mi-files" type="file" accept="image/*" />
-          <p class="sub">补充一张照片（自动上传）</p>
-        </div>
-        <div class="actions">
-          <button type="button" class="btn primary" id="mi-save">保存</button>
-          <span id="mi-msg" class="msg"></span>
+        <div class="md-info-box">
+          <div class="md-info-head">
+            <h4>个人信息</h4>
+            <button type="button" class="btn sm" id="md-toggle-edit">补充 / 编辑信息</button>
+          </div>
+          <div class="md-info-view" id="md-info-view"></div>
+          <div class="md-info-form" id="md-info-form" hidden>
+            <div class="field"><label>模特姓名</label><input id="md-name" type="text" value="${escAttr(model.name)}" /></div>
+            <div class="model-info-grid">
+              ${MODEL_INFO_FIELDS.map(([key, label]) => `<div class="field"><label>${esc(label)}</label><input class="md-f" name="${key}" type="text" value="${escAttr(info[key] ?? '')}" /></div>`).join('')}
+            </div>
+            <div class="actions">
+              <button type="button" class="btn primary" id="md-save">保存信息</button>
+              <span id="md-msg" class="msg"></span>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="modal-foot"><button type="button" class="btn ghost" data-close>关闭</button></div>
+      <div class="modal-foot">
+        <button type="button" class="btn danger" id="md-del">删除模特</button>
+        <button type="button" class="btn primary" id="md-add-photo">＋ 补充照片</button>
+        <button type="button" class="btn ghost" data-close>关闭</button>
+        <input id="md-files" type="file" accept="image/*" hidden />
+      </div>
     </div>`;
   document.body.appendChild(overlay);
   overlay.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => overlay.remove()));
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 
-  let photoKeys = [...(model.photoKeys || [])];
   const renderPhotos = () => {
-    const box = overlay.querySelector('#mi-photos');
+    const box = overlay.querySelector('#md-photos');
     box.innerHTML = photoKeys.length
-      ? photoKeys
-          .map(
-            (k, i) => `
-            <div class="model-photo" data-i="${i}">
-              <img src="${mediaSrc({ kind: 'r2', value: k })}" />
-              <button type="button" class="thumb-del" data-rm="${i}">×</button>
-            </div>`,
-          )
-          .join('')
+      ? photoKeys.map((k) => `<div class="md-photo"><img src="${mediaSrc({ kind: 'r2', value: k })}" loading="lazy" /></div>`).join('')
       : '<div class="empty">暂无照片</div>';
-    box.querySelectorAll('[data-rm]').forEach((b) =>
-      b.addEventListener('click', () => {
-        photoKeys.splice(Number(b.dataset.rm), 1);
-        renderPhotos();
-      }),
+    box.querySelectorAll('.md-photo').forEach((el, i) =>
+      el.addEventListener('click', () => showLightbox(mediaSrc({ kind: 'r2', value: photoKeys[i] }))),
     );
   };
+  const renderInfoView = () => {
+    const box = overlay.querySelector('#md-info-view');
+    const filled = MODEL_INFO_FIELDS.map(([key, label]) => {
+      const v = (model.info ?? {})[key];
+      return v ? `<div class="kv"><span>${esc(label)}</span><b>${esc(v)}</b></div>` : null;
+    }).filter(Boolean);
+    box.innerHTML = filled.length ? filled.join('') : '<div class="empty">尚无可展示信息，点击“补充 / 编辑信息”填写</div>';
+  };
   renderPhotos();
+  renderInfoView();
 
-  overlay.querySelector('#mi-files').addEventListener('change', async () => {
-    const file = overlay.querySelector('#mi-files').files[0];
+  // 功能点之一：补充照片
+  overlay.querySelector('#md-add-photo').addEventListener('click', () => overlay.querySelector('#md-files').click());
+  overlay.querySelector('#md-files').addEventListener('change', async () => {
+    const file = overlay.querySelector('#md-files').files[0];
     if (!file) return;
-    const msg = overlay.querySelector('#mi-msg');
-    msg.className = 'msg';
-    msg.textContent = '上传中…';
+    showToast('上传中…');
     const b64 = await compressImageFile(file);
     const res = await api('/api/upload', {
       method: 'POST',
       body: JSON.stringify({ fileName: file.name, contentType: 'image/jpeg', data: b64 }),
     });
-    msg.textContent = '';
     if (res.ok && res.data.ref) {
       photoKeys.push(res.data.ref.value);
       renderPhotos();
+      showToast('已补充一张照片');
     } else {
-      msg.className = 'msg err';
-      msg.textContent = res.data.error || '上传失败';
+      showToast(res.data.error || '上传失败');
     }
-    overlay.querySelector('#mi-files').value = '';
+    overlay.querySelector('#md-files').value = '';
   });
 
-  overlay.querySelector('#mi-save').addEventListener('click', async () => {
-    const msg = overlay.querySelector('#mi-msg');
+  // 功能点之一：补充 / 编辑模特信息（查看区 ↔ 表单切换）
+  overlay.querySelector('#md-toggle-edit').addEventListener('click', (e) => {
+    const form = overlay.querySelector('#md-info-form');
+    form.hidden = !form.hidden;
+    overlay.querySelector('#md-info-view').hidden = form.hidden;
+    e.currentTarget.textContent = form.hidden ? '补充 / 编辑信息' : '收起编辑';
+  });
+  overlay.querySelector('#md-save').addEventListener('click', async () => {
+    const msg = overlay.querySelector('#md-msg');
     const infoObj = {};
     MODEL_INFO_FIELDS.forEach(([key]) => {
-      const v = overlay.querySelector(`.mi-f[name="${key}"]`).value.trim();
+      const v = overlay.querySelector(`.md-f[name="${key}"]`).value.trim();
       if (v) infoObj[key] = v;
     });
     msg.className = 'msg';
     msg.textContent = '保存中…';
     const res = await api(`/api/models/${model.id}`, {
       method: 'PUT',
-      body: JSON.stringify({ name: overlay.querySelector('#mi-name').value.trim(), photoKeys, info: infoObj }),
+      body: JSON.stringify({ name: overlay.querySelector('#md-name').value.trim(), photoKeys, info: infoObj }),
     });
     if (!res.ok) {
       msg.className = 'msg err';
@@ -670,9 +685,28 @@ function openModelInfoModal(model) {
     }
     msg.className = 'msg ok';
     msg.textContent = '已保存';
+    model = { ...model, name: overlay.querySelector('#md-name').value.trim(), photoKeys, info: infoObj };
+    renderInfoView();
     loadModels();
-    setTimeout(() => overlay.remove(), 600);
   });
+
+  // 功能点之一：删除模特
+  overlay.querySelector('#md-del').addEventListener('click', async () => {
+    if (!confirm(`确认删除模特「${model.name}」？（照片文件保留于存储）`)) return;
+    await api(`/api/models/${model.id}`, { method: 'DELETE' });
+    overlay.remove();
+    showToast(`已删除「${model.name}」`);
+    loadModels();
+  });
+}
+
+/** 全屏大图预览 */
+function showLightbox(src) {
+  const ov = document.createElement('div');
+  ov.className = 'lightbox';
+  ov.innerHTML = `<img src="${src}" /><button type="button" class="modal-close" data-close>×</button>`;
+  ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-close]')) ov.remove(); });
+  document.body.appendChild(ov);
 }
 
 function renderNew() {
