@@ -4,6 +4,7 @@ import type { Env } from '../env';
 
 /** 允许存进 DB 的第三方配置键（与 env.ts 中可选字段同名，便于叠加） */
 export const CONFIG_KEYS = [
+  'LOGIN_PASSWORD',
   'DASHSCOPE_API_KEY',
   'TRYON_MODEL',
   'VIDEO_MODEL',
@@ -58,6 +59,12 @@ export class ConfigStore {
 export async function overlayConfig<T extends Env>(env: T): Promise<T> {
   const cfg = await new ConfigStore(env).all();
   return { ...env, ...cfg };
+}
+
+/** 解析系统登录密码：DB app_config.LOGIN_PASSWORD 优先，其次 env 兜底，最后默认 123456（可随时在配置页修改入库） */
+export async function getAuthPassword(env: Env): Promise<string> {
+  const cfg = await new ConfigStore(env).all();
+  return cfg.LOGIN_PASSWORD || env.LOGIN_PASSWORD || '123456';
 }
 
 async function encryptText(secret: string, plain: string): Promise<string> {

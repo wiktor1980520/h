@@ -8,6 +8,7 @@ const ACCESS_KEY = sessionStorage.getItem('app_access_key') || '';
 let configRevealed = false; // 配置页"查看明文"开关
 
 const CONFIG_FIELDS = [
+  ['LOGIN_PASSWORD', '登录密码（默认 123456）'],
   ['DASHSCOPE_API_KEY', '百炼/DashScope API Key'],
   ['TRYON_MODEL', '试穿模型'],
   ['VIDEO_MODEL', '图生视频模型（kling / seedance）'],
@@ -99,9 +100,9 @@ function renderLogin() {
   view.innerHTML = `
     <section class="login-wrap">
       <form id="login-form" class="card login-card">
-        <h1>🔐 请输入访问密钥</h1>
-        <p class="sub">密钥配置在 Cloudflare 参数（APP_ACCESS_KEY）中，验证通过后才能使用系统</p>
-        <input type="password" id="login-key" autocomplete="current-password" placeholder="访问密钥" />
+        <h1>🔐 请输入登录密码</h1>
+        <p class="sub">默认密码 123456，可在「配置」页修改（存入数据库）</p>
+        <input type="password" id="login-key" autocomplete="current-password" placeholder="登录密码" />
         <button type="submit" class="btn primary">进入</button>
         <div id="login-msg" class="msg"></div>
       </form>

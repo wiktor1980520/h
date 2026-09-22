@@ -46,7 +46,9 @@ export interface Env {
   /** 保护 /api/config 写操作的访问令牌（可选）；未设则允许直接写入 */
   CONFIG_TOKEN?: string;
 
-  // ---- 系统访问门禁 ----
+  // ---- system guards ----
+  /** 登录密码（DB app_config.LOGIN_PASSWORD 优先；env 兜底；均未设时默认 123456） */
+  LOGIN_PASSWORD?: string;
   /** 通用登录密钥（建议 Cloudflare Secret 注入）；设置后所有 /api/* 需带 Authorization: Bearer <该密钥> 才能访问 */
   APP_ACCESS_KEY?: string;
 }

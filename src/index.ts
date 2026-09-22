@@ -3,7 +3,7 @@ import type { Env } from './env';
 import type { Job, MediaRef } from './types';
 import { emptyJob, newJobId } from './types';
 import { JobStore } from './store/d1';
-import { ConfigStore, CONFIG_KEYS, overlayConfig } from './store/config';
+import { ConfigStore, CONFIG_KEYS, overlayConfig, getAuthPassword } from './store/config';
 import { MediaStore } from './storage/r2';
 import { PublisherRegistry } from './publish';
 import { DouyinPublisher } from './publish/douyin';
@@ -47,21 +47,22 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
   const store = new JobStore(env);
   const p = url.pathname.replace(/\/+$/, '') || '/';
 
-  // 登录状态与登录接口无需鉴权
+  // 登录密码：DB app_config.LOGIN_PASSWORD 优先，env 兜底，默认 123456
+  const authPass = await getAuthPassword(env);
+
   if (p === '/api/auth/status') {
-    return json({ enabled: !!env.APP_ACCESS_KEY });
+    return json({ enabled: true });
   }
 
   if (p === '/api/auth/login' && request.method === 'POST') {
-    if (!env.APP_ACCESS_KEY) return json({ ok: true, enabled: false, note: '系统未配置访问密钥' });
     const body = (await request.json().catch(() => null)) as { key?: string } | null;
-    return body?.key && body.key === env.APP_ACCESS_KEY
+    return body?.key && body.key === authPass
       ? json({ ok: true, enabled: true })
       : json({ error: '密钥不正确' }, 401);
   }
 
-  // 配置了 APP_ACCESS_KEY 时，除 auth 外的所有 /api/* 都需携带访问密钥
-  if (env.APP_ACCESS_KEY && !isAuthed(request, env.APP_ACCESS_KEY)) {
+  // 除 auth/status、auth/login 外的所有 /api/* 都需携带登录密码（Authorization: Bearer）鉴权
+  if (!isAuthed(request, authPass)) {
     return json({ error: 'unauthorized: 需要访问密钥' }, 401);
   }
 
