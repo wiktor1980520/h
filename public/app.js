@@ -528,8 +528,6 @@ async function loadModels() {
         <div class="sub">${m.photoKeys.length} 张照片 · ${esc(m.createdAt.slice(0, 10))}</div>
         <div class="row">
           <button type="button" class="btn primary sm" data-use-model="${m.id}">用于新任务</button>
-          <button type="button" class="btn ghost sm" data-view-model="${m.id}">详情</button>
-          <button type="button" class="btn ghost sm" data-del-model="${m.id}">删除</button>
         </div>
       </div>`;
     })
@@ -549,20 +547,6 @@ async function loadModels() {
       pendingPersonRefs = m.photoKeys.map((k) => ({ kind: 'r2', value: k }));
       showToast(`已选用「${m.name}」的照片，去新建任务提交`);
       location.hash = '#/new';
-    }),
-  );
-  box.querySelectorAll('[data-view-model]').forEach((b) =>
-    b.addEventListener('click', () => {
-      const m = models.find((x) => x.id === b.dataset.viewModel);
-      if (m) openModelDetailModal(m);
-    }),
-  );
-  box.querySelectorAll('[data-del-model]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      const m = models.find((x) => x.id === b.dataset.delModel);
-      if (!confirm(`确认删除「${m?.name ?? ''}」？（照片文件保留于存储）`)) return;
-      await api(`/api/models/${b.dataset.delModel}`, { method: 'DELETE' });
-      loadModels();
     }),
   );
 }
@@ -608,9 +592,8 @@ function openModelDetailModal(model) {
       </div>
       <div class="modal-foot">
         <button type="button" class="btn danger" id="md-del">删除模特</button>
-        <button type="button" class="btn primary" id="md-add-photo">＋ 补充照片</button>
+        <label class="btn primary" id="md-add-photo">＋ 补充照片<input id="md-files" type="file" accept="image/*" hidden /></label>
         <button type="button" class="btn ghost" data-close>关闭</button>
-        <input id="md-files" type="file" accept="image/*" hidden />
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -637,8 +620,7 @@ function openModelDetailModal(model) {
   renderPhotos();
   renderInfoView();
 
-  // 功能点之一：补充照片
-  overlay.querySelector('#md-add-photo').addEventListener('click', () => overlay.querySelector('#md-files').click());
+  // 功能点之一：补充照片（label 隐式触发文件选择；上传后即时持久化）
   overlay.querySelector('#md-files').addEventListener('change', async () => {
     const file = overlay.querySelector('#md-files').files[0];
     if (!file) return;
@@ -648,14 +630,18 @@ function openModelDetailModal(model) {
       method: 'POST',
       body: JSON.stringify({ fileName: file.name, contentType: 'image/jpeg', data: b64 }),
     });
+    overlay.querySelector('#md-files').value = '';
     if (res.ok && res.data.ref) {
       photoKeys.push(res.data.ref.value);
       renderPhotos();
-      showToast('已补充一张照片');
+      const up = await api(`/api/models/${model.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ photoKeys }),
+      });
+      showToast(up.ok ? '已补充一张照片' : (up.data.error || '保存失败'));
     } else {
       showToast(res.data.error || '上传失败');
     }
-    overlay.querySelector('#md-files').value = '';
   });
 
   // 功能点之一：补充 / 编辑模特信息（查看区 ↔ 表单切换）
