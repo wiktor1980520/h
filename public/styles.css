@@ -28,6 +28,7 @@ body {
   color: var(--text);
   background: var(--bg);
   letter-spacing: -0.01em;
+  display: flex; flex-direction: column; min-height: 100vh;
 }
 ::selection { background: rgba(0, 113, 227, 0.2); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -60,13 +61,22 @@ body {
 .nav-links a.active { color: var(--text); background: rgba(0, 0, 0, 0.08); }
 .auth-bar { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--text-2); font-size: 12px; }
 .version-badge {
-  margin-left: auto; color: var(--text-2); font-size: 11px; font-weight: 500;
+  color: var(--text-2); font-size: 11px; font-weight: 500;
   font-family: ui-monospace, "SF Mono", "Menlo", monospace; letter-spacing: 0;
   background: rgba(0, 0, 0, 0.05); padding: 3px 9px; border-radius: 980px; white-space: nowrap;
 }
 
+/* ---------- 页脚：版本 + 作者联系方式 ---------- */
+.app-footer {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  width: 100%; padding: 30px 20px 42px; text-align: center;
+  color: var(--text-2); font-size: 12px; border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+.footer-author a { color: var(--text-2); text-decoration: none; }
+.footer-author a:hover { color: var(--blue); text-decoration: underline; }
+
 /* ---------- 容器 / 通用 ---------- */
-.app { max-width: 980px; margin: 0 auto; padding: 32px 22px 96px; }
+.app { flex: 1 0 auto; width: 100%; max-width: 980px; margin: 0 auto; padding: 32px 22px 48px; }
 h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.03em; margin: 0; }
 h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 16px; }
 h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
