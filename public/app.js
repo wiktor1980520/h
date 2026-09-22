@@ -786,6 +786,17 @@ function renderNew() {
               <option value="5">5</option>
             </select>
           </div>
+          <div class="field">
+            <label>氛围风格 <span class="hint">写入提示词，无真实音轨</span></label>
+            <select id="vibe">
+              <option value="" selected>无</option>
+              <option value="bright">轻快明亮</option>
+              <option value="elegant">温柔优雅</option>
+              <option value="grand">大气高级</option>
+              <option value="trendy">潮流卡点</option>
+              <option value="retro">复古质感</option>
+            </select>
+          </div>
         </div>
         <div class="field">
           <label>图生视频提示词</label>
@@ -820,17 +831,27 @@ function renderNew() {
   };
   document.querySelectorAll('input[name="promptmode"]').forEach((r) => r.addEventListener('change', syncPromptMode));
   $('#duration').addEventListener('change', syncPromptPreview);
+  $('#vibe').addEventListener('change', syncPromptPreview);
   syncPromptMode();
 
   renderThumbs(); // 展示从模特库带入的照片
 }
 
 /** 渲染"自动生成"的图生视频提示词示例（与后端 composePrompt 模板保持一致） */
+const VIBE_CLAUSE_FE = {
+  bright: '氛围轻快明亮：节奏轻快跳跃，画面明快充满活力；',
+  elegant: '氛围温柔优雅：节奏舒缓从容，画面柔和浪漫高级；',
+  grand: '氛围大气高级：运镜大气稳重，画面具有高级质感；',
+  trendy: '氛围潮流卡点：节奏动感卡点，画面利落有街头张力；',
+  retro: '氛围复古质感：色调复古胶片感，画面文艺有年代质感；',
+};
 function syncPromptPreview() {
   const el = $('#prompt-preview');
   if (!el) return;
   const d = $('#duration')?.value || '15';
-  el.textContent = `【女装电商展示】模特身着连衣裙（商品：标题，提交后自动填充），自然行走转身展示穿着效果，背景简洁干净，光线均匀，${d}秒运镜流畅，突出服装版型与细节，画面质感真实。`;
+  const vibe = $('#vibe')?.value || '';
+  const vibeClause = VIBE_CLAUSE_FE[vibe] ?? '';
+  el.textContent = `【女装电商展示】模特身着连衣裙（商品：标题，提交后自动填充），自然行走转身展示穿着效果，背景简洁干净，光线均匀，${d}秒运镜流畅，${vibeClause}突出服装版型与细节，画面质感真实。`;
 }
 
 function renderThumbs() {
@@ -1022,6 +1043,7 @@ async function onSubmitJob(e) {
     garmentValue: $('#garment-value').value.trim(),
     resolution: $('#resolution').value,
     duration: Number($('#duration').value),
+    promptVibe: $('#vibe')?.value || undefined,
     manualPublish: true, // 生成后由用户在任务详情页手动发布（发布平台取自全局配置）
   };
   // 仅在"自定义"模式下有非空输入时，才把用户提示词传给后端（否则自动生成）

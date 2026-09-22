@@ -26,6 +26,8 @@ export interface VideoOptions {
   withSound: boolean;
   /** 用户自定义图生视频提示词（非空则优先级高于自动生成） */
   customPrompt?: string;
+  /** 氛围/配乐风格，非空则注入自动生成的提示词（仅在自动生成时生效） */
+  promptVibe?: string;
   /** true=生成完成后不自动发布，由用户在页面手动触发发布 */
   manualPublish?: boolean;
 }

@@ -140,6 +140,7 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
           title: current.parsed?.title,
           category: parsed?.category,
           duration: current.options.duration,
+          vibe: current.options.promptVibe,
         });
       const { taskId } = await gen.submit({
         tryOnImageKey: tryOnKey,
@@ -279,11 +280,20 @@ function videoKind(model: string | undefined): 'kling' | 'seedance' {
 }
 
 /** 组装可读、可视化的生成提示词（结构化描述，供前端展示） */
-function composePrompt(opts: { title?: string; category?: string; duration: number }): string {
+const VIBE_CLAUSE: Record<string, string> = {
+  bright: '轻快明亮：节奏轻快跳跃，画面明快充满活力',
+  elegant: '温柔优雅：节奏舒缓从容，画面柔和浪漫高级',
+  grand: '大气高级：运镜大气稳重，画面具有高级质感',
+  trendy: '潮流卡点：节奏动感卡点，画面利落有街头张力',
+  retro: '复古质感：色调复古胶片感，画面文艺有年代质感',
+};
+
+function composePrompt(opts: { title?: string; category?: string; duration: number; vibe?: string }): string {
   const cat = opts.category ?? 'dress';
   const catText =
     cat === 'top' ? '上装' : cat === 'bottom' ? '下装' : '连衣裙';
-  return `【女装电商展示】模特身着${catText}${opts.title ? `（商品：${opts.title}）` : ''}，自然行走转身展示穿着效果，背景简洁干净，光线均匀，${opts.duration}秒运镜流畅，突出服装版型与细节，画面质感真实。`;
+  const vibeClause = opts.vibe ? `氛围${VIBE_CLAUSE[opts.vibe] ?? opts.vibe}；` : '';
+  return `【女装电商展示】模特身着${catText}${opts.title ? `（商品：${opts.title}）` : ''}，自然行走转身展示穿着效果，背景简洁干净，光线均匀，${opts.duration}秒运镜流畅，${vibeClause}突出服装版型与细节，画面质感真实。`;
 }
 
 function defaultTargets(pubOn: string | undefined): PublishTarget[] {

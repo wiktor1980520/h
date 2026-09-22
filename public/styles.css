@@ -525,6 +525,7 @@ code { background: rgba(10, 102, 255, 0.08); padding: 1px 7px; border-radius: 7p
 .primary-tag { position: absolute; left: 6px; bottom: 6px; background: rgba(17,19,24,0.82); color: #fff; font-size: 10px; font-weight: 650; padding: 2px 9px; border-radius: 999px; backdrop-filter: blur(4px); }
 
 /* 提示词预览 / 自定义 */
+.hint { font-size: 11px; color: var(--text-3); font-weight: 400; }
 .prompt-preview {
   background: rgba(10, 102, 255, 0.05); border: 1px dashed rgba(10, 102, 255, 0.3);
   border-radius: 12px; padding: 12px 14px; font-size: 13px; line-height: 1.7;

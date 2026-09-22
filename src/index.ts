@@ -298,6 +298,8 @@ async function createJob(request: Request, env: Env, store: JobStore): Promise<R
       withSound: body.withSound ?? true,
       manualPublish: body.manualPublish ?? false,
       customPrompt: typeof body.prompt === 'string' && body.prompt.trim() ? body.prompt.trim() : undefined,
+      promptVibe:
+        typeof body.promptVibe === 'string' && body.promptVibe.trim() ? body.promptVibe.trim() : undefined,
     },
   });
   await store.create(job);
@@ -570,6 +572,8 @@ interface CreateJobBody {
   withSound?: boolean;
   /** 自定义图生视频提示词（留空则由管道按商品/品类/时长自动生成） */
   prompt?: string;
+  /** 氛围/配乐风格，注入自动生成的提示词 */
+  promptVibe?: string;
   manualPublish?: boolean;
   publish?: Array<Job['publish'][number]['platform']>;
 }
