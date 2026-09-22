@@ -39,34 +39,12 @@ export default {
       return routeApi(request, url, env);
     }
 
-    // 首页/入口 HTML：注入版本指纹到静态资源 URL（换缓存键），并自身不缓存以便始终取到最新版本号
-    if (url.pathname === '/' || url.pathname === '/index.html') {
-      return serveIndex(env);
-    }
-
     // 静态资源（前端界面）优先
     const asset = await env.ASSETS.fetch(request);
     if (asset.status !== 404) return asset;
     return new Response('Not Found', { status: 404 });
   },
 };
-
-/** 返回入口 index.html，并把 __APP_VERSION__ 占位符替换为发布版本号（资源 URL 因此携带缓存指纹） */
-async function serveIndex(env: Env): Promise<Response> {
-  const asset = await env.ASSETS.fetch(new URL('https://static.local/index.html'));
-  if (asset.status !== 200) {
-    return new Response('Not Found', { status: 404 });
-  }
-  const html = await asset.text();
-  const v = encodeURIComponent(env.RELEASE_VERSION || '');
-  return new Response(html.replace(/__APP_VERSION__/g, v), {
-    headers: {
-      'content-type': 'text/html; charset=utf-8',
-      // 入口 HTML 每次都需要拿到最新的版本号，子资源靠版本指纹自行缓存
-      'cache-control': 'no-cache',
-    },
-  });
-}
 
 async function routeApi(request: Request, url: URL, env: Env): Promise<Response> {
   const store = new JobStore(env);
