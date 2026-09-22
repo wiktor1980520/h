@@ -67,11 +67,35 @@ export interface PublishLogRecord {
   createdAt: string;
 }
 
+/** 模特个人信息（自由扩展，JSON 存储） */
+export interface ModelInfo {
+  gender?: string;    // 性别
+  height?: string;    // 身高 cm
+  weight?: string;    // 体重 kg
+  age?: string;       // 年龄
+  size?: string;      // 服装尺码
+  bust?: string;      // 胸围 cm
+  waist?: string;     // 腰围 cm
+  hip?: string;       // 臀围 cm
+  shoeSize?: string;  // 鞋码
+  hairColor?: string; // 发色
+  skinTone?: string;  // 肤色
+  hairstyle?: string; // 发型
+  style?: string;     // 风格/擅长
+  phone?: string;     // 联系电话
+  email?: string;     // 邮箱
+  wechat?: string;    // 微信
+  address?: string;   // 地址
+  notes?: string;     // 备注
+  [k: string]: string | undefined;
+}
+
 /** 模特库：复用预上传的模特照片，创建任务时可选用 */
 export interface Model {
   id: string;
   name: string;
   photoKeys: string[]; // R2 对象 key
+  info?: ModelInfo;    // 个人信息
   createdAt: string;
 }
 

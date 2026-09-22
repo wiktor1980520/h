@@ -7,6 +7,28 @@ const ACCESS_KEY = sessionStorage.getItem('app_access_key') || '';
 
 let configRevealed = false; // 配置页"查看明文"开关
 
+// 模特个人信息可编辑字段（label 用于表单与展示）
+const MODEL_INFO_FIELDS = [
+  ['gender', '性别'],
+  ['age', '年龄'],
+  ['height', '身高（cm）'],
+  ['weight', '体重（kg）'],
+  ['size', '服装尺码'],
+  ['bust', '胸围（cm）'],
+  ['waist', '腰围（cm）'],
+  ['hip', '臀围（cm）'],
+  ['shoeSize', '鞋码'],
+  ['hairColor', '发色'],
+  ['skinTone', '肤色'],
+  ['hairstyle', '发型'],
+  ['style', '擅长风格'],
+  ['phone', '联系电话'],
+  ['email', '邮箱'],
+  ['wechat', '微信'],
+  ['address', '地址'],
+  ['notes', '备注'],
+];
+
 const CONFIG_FIELDS = [
   ['LOGIN_PASSWORD', '登录密码（默认 123456）'],
   ['DASHSCOPE_API_KEY', '百炼/DashScope API Key'],
@@ -441,8 +463,10 @@ async function loadModels() {
         </div>
         <div class="model-name">${esc(m.name)}</div>
         <div class="sub">${m.photoKeys.length} 张照片 · ${esc(m.createdAt.slice(0, 10))}</div>
+        ${modelInfoSummary(m) ? `<div class="model-info-summary">${modelInfoSummary(m)}</div>` : ''}
         <div class="row">
           <button type="button" class="btn primary sm" data-use-model="${m.id}">用于新任务</button>
+          <button type="button" class="btn ghost sm" data-edit-model="${m.id}">信息</button>
           <button type="button" class="btn ghost sm" data-del-model="${m.id}">删除</button>
         </div>
       </div>`,
@@ -457,6 +481,12 @@ async function loadModels() {
       location.hash = '#/new';
     }),
   );
+  box.querySelectorAll('[data-edit-model]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const m = models.find((x) => x.id === b.dataset.editModel);
+      if (m) openModelInfoModal(m);
+    }),
+  );
   box.querySelectorAll('[data-del-model]').forEach((b) =>
     b.addEventListener('click', async () => {
       if (!confirm('删除该模特？（照片文件保留于存储）')) return;
@@ -464,6 +494,121 @@ async function loadModels() {
       loadModels();
     }),
   );
+}
+
+/** 简洁展示模特已填写的信息（几条非空字段），无则返回空串 */
+function modelInfoSummary(m) {
+  const picked = MODEL_INFO_FIELDS.slice(0, 8)
+    .map(([key, label]) => {
+      const v = (m.info ?? {})[key];
+      return v ? `${label}:${esc(v)}` : null;
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+  return picked.length ? picked.join(' · ') : '';
+}
+
+/** 模特个人信息编辑 / 查看弹框（含关联照片管理） */
+function openModelInfoModal(model) {
+  closeModal();
+  const info = model.info ?? {};
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal modal-lg">
+      <header class="modal-head">
+        <h3>模特信息 — ${esc(model.name)}</h3>
+        <button type="button" class="modal-close" data-close>×</button>
+      </header>
+      <div class="modal-body">
+        <div class="field"><label>模特姓名</label><input id="mi-name" class="pet" type="text" value="${escAttr(model.name)}" /></div>
+        <div class="model-info-grid">
+          ${MODEL_INFO_FIELDS.map(([key, label]) => `<div class="field"><label>${esc(label)}</label><input class="pet mi-f" name="${key}" type="text" value="${escAttr(info[key] ?? '')}" /></div>`).join('')}
+        </div>
+        <div class="field"><label>照片（点击可删除单张）</label><div class="model-photos editable" id="mi-photos"></div></div>
+        <div class="upload-single">
+          <input id="mi-files" type="file" accept="image/*" />
+          <p class="sub">补充一张照片（自动上传）</p>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn primary" id="mi-save">保存</button>
+          <span id="mi-msg" class="msg"></span>
+        </div>
+      </div>
+      <div class="modal-foot"><button type="button" class="btn ghost" data-close>关闭</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => overlay.remove()));
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+  let photoKeys = [...(model.photoKeys || [])];
+  const renderPhotos = () => {
+    const box = overlay.querySelector('#mi-photos');
+    box.innerHTML = photoKeys.length
+      ? photoKeys
+          .map(
+            (k, i) => `
+            <div class="model-photo" data-i="${i}">
+              <img src="${mediaSrc({ kind: 'r2', value: k })}" />
+              <button type="button" class="thumb-del" data-rm="${i}">×</button>
+            </div>`,
+          )
+          .join('')
+      : '<div class="empty">暂无照片</div>';
+    box.querySelectorAll('[data-rm]').forEach((b) =>
+      b.addEventListener('click', () => {
+        photoKeys.splice(Number(b.dataset.rm), 1);
+        renderPhotos();
+      }),
+    );
+  };
+  renderPhotos();
+
+  overlay.querySelector('#mi-files').addEventListener('change', async () => {
+    const file = overlay.querySelector('#mi-files').files[0];
+    if (!file) return;
+    const msg = overlay.querySelector('#mi-msg');
+    msg.className = 'msg';
+    msg.textContent = '上传中…';
+    const b64 = await compressImageFile(file);
+    const res = await api('/api/upload', {
+      method: 'POST',
+      body: JSON.stringify({ fileName: file.name, contentType: 'image/jpeg', data: b64 }),
+    });
+    msg.textContent = '';
+    if (res.ok && res.data.ref) {
+      photoKeys.push(res.data.ref.value);
+      renderPhotos();
+    } else {
+      msg.className = 'msg err';
+      msg.textContent = res.data.error || '上传失败';
+    }
+    overlay.querySelector('#mi-files').value = '';
+  });
+
+  overlay.querySelector('#mi-save').addEventListener('click', async () => {
+    const msg = overlay.querySelector('#mi-msg');
+    const infoObj = {};
+    MODEL_INFO_FIELDS.forEach(([key]) => {
+      const v = overlay.querySelector(`.mi-f[name="${key}"]`).value.trim();
+      if (v) infoObj[key] = v;
+    });
+    msg.className = 'msg';
+    msg.textContent = '保存中…';
+    const res = await api(`/api/models/${model.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name: overlay.querySelector('#mi-name').value.trim(), photoKeys, info: infoObj }),
+    });
+    if (!res.ok) {
+      msg.className = 'msg err';
+      msg.textContent = res.data.error || '保存失败';
+      return;
+    }
+    msg.className = 'msg ok';
+    msg.textContent = '已保存';
+    loadModels();
+    setTimeout(() => overlay.remove(), 600);
+  });
 }
 
 function renderNew() {
@@ -475,8 +620,10 @@ function renderNew() {
     <section class="card">
       <form id="job-form">
         <div class="field">
-          <label>人物图片 <span class="sub">（支持多张，第一张作为试穿底图）</span></label>
-          <input id="person-files" type="file" accept="image/*" multiple />
+          <label>人物图片 <span class="sub">（可多张，第一张作为试穿底图）</span></label>
+          <div class="person-picker-row">
+            <button type="button" class="btn" id="person-add">＋ 添加人物图片（选模特 / 上传）</button>
+          </div>
           <div id="person-thumbs" class="uploads"></div>
         </div>
         <div class="field">
@@ -533,35 +680,7 @@ function renderNew() {
       </form>
     </section>`;
 
-  const files = $('#person-files');
-  files.addEventListener('change', async () => {
-    const errBox = $('#upload-error');
-    if (errBox) errBox.remove();
-    const pending = [...files.files];
-    for (const file of pending) {
-      // 先压缩再上传：百炼试穿接口要求图片 ≤5MB，手机原图常超限
-      const b64 = await compressImageFile(file);
-      const res = await api('/api/upload', {
-        method: 'POST',
-        body: JSON.stringify({ fileName: file.name, contentType: 'image/jpeg', data: b64 }),
-      });
-      if (res.ok && res.data.ref) {
-        newJobState.personRefs.push(res.data.ref);
-      } else {
-        if (res.status === 401) {
-          forceLogout('登录已失效，请重新输入访问密钥');
-          return;
-        }
-        const err = document.createElement('div');
-        err.id = 'upload-error';
-        err.className = 'msg err';
-        err.textContent = `「${file.name}」上传失败：${res.data.error || '服务端错误'}`;
-        $('#person-thumbs').parentElement.appendChild(err);
-      }
-    }
-    renderThumbs();
-    files.value = '';
-  });
+  $('#person-add').addEventListener('click', () => openPersonPicker());
   $('#garment-type').addEventListener('change', (e) => {
     $('#garment-value').placeholder = e.target.value === 'link' ? 'https://item.jd.com/… 或商品图链接' : 'https://…/garment.jpg';
   });
@@ -588,6 +707,144 @@ function renderThumbs() {
       renderThumbs();
     }),
   );
+}
+
+/* ------- 人物图片选择弹框（选模特照片 / 上传单张） ------- */
+function openPersonPicker() {
+  closeModal();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'person-picker';
+  overlay.innerHTML = `
+    <div class="modal">
+      <header class="modal-head">
+        <h3>添加人物图片</h3>
+        <button type="button" class="modal-close" data-close>×</button>
+      </header>
+      <div class="modal-tabs">
+        <button type="button" class="tab active" data-tab="models">选择模特</button>
+        <button type="button" class="tab" data-tab="upload">上传照片</button>
+      </div>
+      <div class="modal-body">
+        <div class="tab-pane" data-pane="models">
+          <div class="picker-models"><div class="loading sm">载入模特中…</div></div>
+        </div>
+        <div class="tab-pane hidden" data-pane="upload">
+          <div class="upload-single">
+            <input id="picker-upload" type="file" accept="image/*" />
+            <p class="sub">选择一张照片加入任务（自动压缩后上传）</p>
+            <div id="picker-msg" class="msg"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('[data-close]').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelectorAll('.tab').forEach((t) =>
+    t.addEventListener('click', () => {
+      overlay.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
+      overlay.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== t.dataset.tab));
+      if (t.dataset.tab === 'models') loadPickerModels(overlay);
+    }),
+  );
+
+  const up = overlay.querySelector('#picker-upload');
+  up.addEventListener('change', async () => {
+    const file = up.files[0];
+    if (!file) return;
+    const msg = overlay.querySelector('#picker-msg');
+    msg.className = 'msg';
+    msg.textContent = '上传中…';
+    const b64 = await compressImageFile(file);
+    const res = await api('/api/upload', {
+      method: 'POST',
+      body: JSON.stringify({ fileName: file.name, contentType: 'image/jpeg', data: b64 }),
+    });
+    if (res.ok && res.data.ref) {
+      newJobState.personRefs.push(res.data.ref);
+      renderThumbs();
+      msg.className = 'msg ok';
+      msg.textContent = '已添加';
+      setTimeout(() => overlay.remove(), 600);
+    } else {
+      msg.className = 'msg err';
+      msg.textContent = res.data.error || '上传失败';
+    }
+    up.value = '';
+  });
+
+  loadPickerModels(overlay);
+}
+
+async function loadPickerModels(overlay) {
+  const box = overlay.querySelector('.picker-models');
+  if (!box) return;
+  const res = await api('/api/models');
+  const models = res.data?.models ?? [];
+  if (!models.length) {
+    box.innerHTML = '<div class="empty">暂无模特，可切换到「上传照片」直接添加</div>';
+    return;
+  }
+  box.innerHTML = models
+    .map(
+      (m) => `
+      <div class="picker-model" data-id="${esc(m.id)}">
+        <div class="picker-model-head">
+          ${m.photoKeys[0] ? `<img class="picker-model-avatar" src="${mediaSrc({ kind: 'r2', value: m.photoKeys[0] })}" alt="" />` : '<span class="picker-model-avatar ph"></span>'}
+          <div class="picker-model-meta">
+            <div class="picker-model-name">${esc(m.name)}</div>
+            <div class="sub">${m.photoKeys.length} 张照片</div>
+          </div>
+          <span class="picker-caret">▸</span>
+        </div>
+        <div class="picker-model-photos"></div>
+      </div>`,
+    )
+    .join('');
+
+  box.querySelectorAll('.picker-model').forEach((el) =>
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.picker-photo')) return; // 点击内部照片交给照片处理器
+      el.classList.toggle('open');
+      renderPickerModelPhotos(el, models.find((m) => m.id === el.dataset.id));
+    }),
+  );
+}
+
+function renderPickerModelPhotos(el, m) {
+  const wrap = el.querySelector('.picker-model-photos');
+  if (!m) return;
+  wrap.innerHTML = m.photoKeys.length
+    ? m.photoKeys
+        .map((k) => {
+          const picked = newJobState.personRefs.some((r) => r.value === k);
+          return `<div class="picker-photo ${picked ? 'picked' : ''}" data-k="${esc(k)}">
+            <img src="${mediaSrc({ kind: 'r2', value: k })}" />
+            ${picked ? '<span class="picked-mark">✔ 已加</span>' : ''}
+          </div>`;
+        })
+        .join('')
+    : '<div class="empty">该模特暂无照片</div>';
+  wrap.querySelectorAll('.picker-photo').forEach((p) =>
+    p.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const k = p.dataset.k;
+      if (newJobState.personRefs.some((r) => r.value === k)) {
+        showToast('该照片已在任务中');
+        return;
+      }
+      newJobState.personRefs.push({ kind: 'r2', value: k });
+      renderThumbs();
+      showToast('已添加「' + m.name + '」的照片');
+    }),
+  );
+}
+
+function closeModal() {
+  document.querySelector('.modal-overlay')?.remove();
 }
 
 async function onSubmitJob(e) {

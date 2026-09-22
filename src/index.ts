@@ -248,6 +248,9 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
     return createModel(request, store);
   }
   const modelMatch = /^\/api\/models\/([^/]+)$/.exec(p);
+  if (modelMatch && request.method === 'PUT') {
+    return updateModel(modelMatch[1], request, store);
+  }
   if (modelMatch && request.method === 'DELETE') {
     await store.deleteModel(decodeURIComponent(modelMatch[1]));
     return json({ ok: true });
@@ -398,16 +401,38 @@ async function uploadFile(request: Request, env: Env): Promise<Response> {
   return json({ ref, key }, 201);
 }
 
-/** POST /api/models — 新建模特（name + 已上传到 R2 的 photo keys） */
+/** POST /api/models — 新建模特（name + 已上传到 R2 的 photo keys + 可选个人信息） */
 async function createModel(request: Request, store: JobStore): Promise<Response> {
-  const body = (await request.json().catch(() => ({}))) as { name?: string; photoKeys?: string[] };
+  const body = (await request.json().catch(() => ({}))) as { name?: string; photoKeys?: string[]; info?: Model['info'] };
   const name = (body.name ?? '').trim();
   const photoKeys = (body.photoKeys ?? []).filter((k) => typeof k === 'string' && k.length);
   if (!name) return json({ error: '模特姓名必填' }, 400);
   if (!photoKeys.length) return json({ error: '至少上传一张模特照片' }, 400);
-  const model: Model = { id: newJobId(), name, photoKeys, createdAt: new Date().toISOString() };
+  const model: Model = {
+    id: newJobId(),
+    name,
+    photoKeys,
+    info: body.info && typeof body.info === 'object' ? body.info : {},
+    createdAt: new Date().toISOString(),
+  };
   await store.createModel(model);
   return json({ ok: true, model }, 201);
+}
+
+/** PUT /api/models/:id — 更新模特（姓名 / 照片 / 个人信息） */
+async function updateModel(id: string, request: Request, store: JobStore): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    name?: string;
+    photoKeys?: string[];
+    info?: Model['info'];
+  };
+  const patch: { name?: string; photoKeys?: string[]; info?: Model['info'] } = {};
+  if (typeof body.name === 'string') patch.name = body.name;
+  if (Array.isArray(body.photoKeys)) patch.photoKeys = body.photoKeys.filter((k) => typeof k === 'string' && k.length);
+  if (body.info && typeof body.info === 'object') patch.info = body.info;
+  const model = await store.updateModel(id, patch);
+  if (!model) return notFound();
+  return json({ ok: true, model });
 }
 
 interface PublishContentBody {

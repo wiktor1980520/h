@@ -1,6 +1,6 @@
 // store/d1.ts — D1 持久化层（任务 CRUD + 发布流水，payload 按 JSON 存储）
 import type { Env } from '../env';
-import type { Job, JobStatus, Model, Platform, PublishLogRecord } from '../types';
+import type { Job, JobStatus, Model, ModelInfo, Platform, PublishLogRecord } from '../types';
 
 export interface ListResult {
   items: Job[];
@@ -9,6 +9,25 @@ export interface ListResult {
 
 export function rowToJob(row: { payload: string }): Job {
   return JSON.parse(row.payload) as Job;
+}
+
+function parseInfo(raw: string | null | undefined): ModelInfo {
+  try {
+    const v = JSON.parse(raw || '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+export function rowToModel(r: ModelRow): Model {
+  return {
+    id: r.id,
+    name: r.name,
+    photoKeys: JSON.parse(r.photo_keys || '[]') as string[],
+    info: parseInfo(r.info),
+    createdAt: r.created_at,
+  };
 }
 
 export class JobStore {
@@ -63,25 +82,37 @@ export class JobStore {
 
   // ---- 模特库 ----
   async createModel(m: Model): Promise<void> {
-    await this.env.DB.prepare('INSERT INTO models (id, name, photo_keys, created_at) VALUES (?, ?, ?, ?)')
-      .bind(m.id, m.name, JSON.stringify(m.photoKeys), m.createdAt)
+    await this.env.DB.prepare(
+      'INSERT INTO models (id, name, photo_keys, info, created_at) VALUES (?, ?, ?, ?, ?)',
+    )
+      .bind(m.id, m.name, JSON.stringify(m.photoKeys), JSON.stringify(m.info ?? {}), m.createdAt)
       .run();
+  }
+
+  /** 更新模特（信息 / 姓名 / 照片）。只更新传入的字段，其余保留。 */
+  async updateModel(id: string, patch: { name?: string; photoKeys?: string[]; info?: Model['info'] }): Promise<Model | null> {
+    const cur = await this.getModel(id);
+    if (!cur) return null;
+    const next: Model = {
+      ...cur,
+      name: patch.name?.trim() || cur.name,
+      photoKeys: patch.photoKeys ?? cur.photoKeys,
+      info: patch.info ?? cur.info,
+    };
+    await this.env.DB.prepare('UPDATE models SET name = ?, photo_keys = ?, info = ? WHERE id = ?')
+      .bind(next.name, JSON.stringify(next.photoKeys), JSON.stringify(next.info ?? {}), id)
+      .run();
+    return next;
   }
 
   async listModels(): Promise<Model[]> {
     const { results } = await this.env.DB.prepare('SELECT * FROM models WHERE deleted_at IS NULL ORDER BY rowid DESC').all<ModelRow>();
-    return results.map((r) => ({
-      id: r.id,
-      name: r.name,
-      photoKeys: JSON.parse(r.photo_keys || '[]') as string[],
-      createdAt: r.created_at,
-    }));
+    return results.map(rowToModel);
   }
 
   async getModel(id: string): Promise<Model | null> {
     const res = await this.env.DB.prepare('SELECT * FROM models WHERE id = ? AND deleted_at IS NULL').bind(id).first<ModelRow>();
-    if (!res) return null;
-    return { id: res.id, name: res.name, photoKeys: JSON.parse(res.photo_keys || '[]') as string[], createdAt: res.created_at };
+    return res ? rowToModel(res) : null;
   }
 
   async deleteModel(id: string): Promise<void> {
@@ -183,5 +214,6 @@ interface ModelRow {
   id: string;
   name: string;
   photo_keys: string;
+  info: string | null;
   created_at: string;
 }

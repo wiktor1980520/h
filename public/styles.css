@@ -246,6 +246,73 @@ code { background: rgba(0, 0, 0, 0.05); padding: 1px 6px; border-radius: 6px; fo
 
 #toast { position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); background: rgba(20, 20, 20, 0.9); color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 13px; transition: opacity 0.3s; z-index: 999; opacity: 0; pointer-events: none; }
 
+/* ---------- 弹框（选模特 / 模特信息） ---------- */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 900;
+  background: rgba(0, 0, 0, 0.42); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  display: grid; place-items: center; padding: 20px;
+  animation: fadeIn 0.18s ease both;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal {
+  width: 100%; max-width: 520px; max-height: 88vh;
+  display: flex; flex-direction: column;
+  background: var(--surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); overflow: hidden;
+  animation: modalUp 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.modal-lg { max-width: 640px; }
+@keyframes modalUp { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--line);
+}
+.modal-head h3 { margin: 0; }
+.modal-close { width: 30px; height: 30px; border: none; border-radius: 50%; background: var(--surface-2); color: var(--text-2); font-size: 18px; line-height: 1; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.modal-close:hover { background: var(--red); color: #fff; }
+.modal-tabs { display: flex; gap: 6px; padding: 12px 20px 0; }
+.modal-tabs .tab {
+  flex: 1; padding: 10px; border: none; border-radius: 12px;
+  background: var(--surface-2); color: var(--text-2); font-size: 14px; font-weight: 500;
+  cursor: pointer; font-family: var(--font); transition: all 0.15s;
+}
+.modal-tabs .tab:hover { color: var(--text); }
+.modal-tabs .tab.active { background: var(--blue); color: #fff; }
+.modal-body { padding: 16px 20px 20px; overflow-y: auto; }
+.modal-foot { display: flex; justify-content: flex-end; padding: 12px 20px; border-top: 1px solid var(--line); }
+.hidden { display: none !important; }
+
+/* 选模特：模型列表（可展开照片） */
+.picker-models { display: flex; flex-direction: column; gap: 10px; }
+.picker-model { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; transition: border-color 0.15s; }
+.picker-model:hover { border-color: var(--blue); }
+.picker-model.open { border-color: var(--blue); }
+.picker-model-head { display: flex; align-items: center; gap: 12px; padding: 10px 12px; cursor: pointer; }
+.picker-model-avatar { width: 46px; height: 62px; object-fit: cover; border-radius: 8px; background: var(--surface-2); flex: 0 0 auto; }
+.picker-model-avatar.ph { width: 46px; height: 62px; border: 1px dashed var(--line-strong); }
+.picker-model-meta { min-width: 0; flex: 1; }
+.picker-model-name { font-weight: 600; font-size: 14px; }
+.picker-caret { color: var(--text-2); font-size: 12px; transition: transform 0.18s; }
+.picker-model.open .picker-caret { transform: rotate(90deg); }
+.picker-model-photos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0 12px 12px; }
+.picker-photo { position: relative; cursor: pointer; }
+.picker-photo img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); transition: transform 0.15s, border-color 0.15s; }
+.picker-photo:hover img { transform: scale(1.03); border-color: var(--blue); }
+.picker-photo.picked img { opacity: 0.55; border-color: var(--green); }
+.picked-mark { position: absolute; left: 5px; bottom: 5px; background: var(--green); color: #fff; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; }
+
+.upload-single { margin: 6px 0; }
+.upload-single input[type="file"] { display: block; margin-bottom: 8px; color: var(--text-2); }
+.person-picker-row { display: flex; }
+
+/* 模特信息 */
+.model-info-summary { font-size: 12px; color: var(--text-2); margin: 6px 0 10px; line-height: 1.5; }
+.model-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 4px 0 14px; }
+.model-info-grid .field { margin-bottom: 0; }
+.modal .model-photos { margin-bottom: 8px; }
+.model-photo { position: relative; }
+.model-photo img { width: 88px; height: 88px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line-strong); }
+
 /* ---------- 表单 ---------- */
 .field { margin-bottom: 18px; }
 .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 7px; }
@@ -329,6 +396,8 @@ code { background: rgba(0, 0, 0, 0.05); padding: 1px 6px; border-radius: 6px; fo
   h1 { font-size: 26px; }
   .media { grid-template-columns: repeat(2, 1fr); }
   .media img, .media video { width: 100%; height: 300px; }
+  .picker-model-photos { grid-template-columns: repeat(3, 1fr); }
+  .model-info-grid { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
