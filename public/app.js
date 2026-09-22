@@ -616,10 +616,6 @@ function renderConfig() {
         </div>
       </label>`,
     ).join('') +
-    `<label class="cfg-item">
-      <span>写保护令牌 <code>CONFIG_TOKEN</code>（可选）</span>
-      <input type="password" name="config_token" autocomplete="new-password" placeholder="仅当设了 CONFIG_TOKEN 时填写" />
-    </label>` +
     `<div class="cfg-actions"><button type="submit" class="btn primary">保存配置</button><button type="button" id="cfg-reveal" class="btn">查看明文</button><span id="config-msg" class="msg"></span></div>`;
 
   api('/api/config').then((r) => applyConfigState(form, r.data, false));
@@ -667,7 +663,6 @@ function applyConfigState(form, data, reveal) {
 async function saveConfig() {
   const form = $('#config-form');
   if (!form) return;
-  const token = form.querySelector('input[name="config_token"]')?.value || '';
   const values = {};
   for (const [key] of CONFIG_FIELDS) {
     const v = form.querySelector(`input[name="${key}"]`)?.value ?? '';
@@ -677,15 +672,11 @@ async function saveConfig() {
   const msg = $('#config-msg');
   msg.className = 'msg';
   msg.textContent = '保存中…';
-  const headers = { 'content-type': 'application/json' };
-  // 写保护令牌走独立头；登录密钥由 api() 通过 authorization 自动携带
-  if (token) headers['x-config-token'] = token;
-  const res = await api('/api/config', { method: 'POST', headers, body: JSON.stringify({ values }) });
+  const res = await api('/api/config', { method: 'POST', body: JSON.stringify({ values }) });
   msg.className = res.ok ? 'msg' : 'msg err';
   msg.textContent = res.ok ? '已保存到数据库。' : '保存失败：' + (res.data.error ?? res.status);
   setTimeout(() => (msg.textContent = ''), 3000);
   if (res.ok) {
-    form.querySelector('input[name="config_token"]').value = '';
     const s = await api('/api/config');
     applyConfigState(form, s.data);
   }

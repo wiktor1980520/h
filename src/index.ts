@@ -454,15 +454,8 @@ async function getConfig(url: URL, env: Env): Promise<Response> {
   });
 }
 
-/** POST /api/config — body: { values: {键: 值} }；值置空字符串则删除该键。受可选 CONFIG_TOKEN 保护 */
+/** POST /api/config — body: { values: {键: 值} }；值置空字符串则删除该键。受登录密码(authorization)鉴权 */
 async function saveConfig(request: Request, env: Env): Promise<Response> {
-  if (env.CONFIG_TOKEN) {
-    // 写保护令牌走独立头 x-config-token，与登录密钥(authorization)解耦
-    const token = request.headers.get('x-config-token') ?? request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
-    if (token !== env.CONFIG_TOKEN) {
-      return json({ error: 'unauthorized' }, 401);
-    }
-  }
   const body = (await request.json().catch(() => null)) as { values?: Record<string, string> } | null;
   if (!body || !body.values) return json({ error: 'values 必填，形如 { "DASHSCOPE_API_KEY": "sk-xxx" }' }, 400);
   await new ConfigStore(env).save(body.values);

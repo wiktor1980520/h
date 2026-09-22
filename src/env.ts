@@ -43,8 +43,6 @@ export interface Env {
   // ---- 数据库配置相关 ----
   /** AES-GCM 加密第三方 key 落库的密钥（建议 Cloudflare Secret 注入）；未设则明文存 */
   DATA_ENCRYPTION_KEY?: string;
-  /** 保护 /api/config 写操作的访问令牌（可选）；未设则允许直接写入 */
-  CONFIG_TOKEN?: string;
 
   // ---- system guards ----
   /** 登录密码（DB app_config.LOGIN_PASSWORD 优先；env 兜底；均未设时默认 123456） */
