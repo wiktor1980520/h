@@ -10,6 +10,8 @@ import { PublisherRegistry } from '../publish';
 import { DouyinPublisher } from '../publish/douyin';
 import { WeixinChannelsPublisher } from '../publish/weixin';
 import { XiaohongshuPublisher } from '../publish/xiaohongshu';
+import { MetaPublisher } from '../publish/meta';
+import { TikTokPublisher } from '../publish/tiktok';
 import { GarmentParser } from '../providers/parser';
 import { buildVton } from '../providers/vton';
 import { buildVideo } from '../providers/video';
@@ -246,6 +248,9 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
       new DouyinPublisher(cfg, media),
       new WeixinChannelsPublisher(cfg, media),
       new XiaohongshuPublisher(cfg, media),
+      new MetaPublisher(cfg, media, 'instagram'),
+      new MetaPublisher(cfg, media, 'facebook'),
+      new TikTokPublisher(cfg, media),
     ]);
   }
 

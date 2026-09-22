@@ -36,6 +36,13 @@ export interface Env {
 
   XHS_RPA_WEBHOOK?: string;
 
+  // ---- 海外社媒 ----
+  META_ACCESS_TOKEN?: string;
+  META_IG_USER_ID?: string;
+  META_FB_PAGE_ID?: string;
+  TIKTOK_ACCESS_TOKEN?: string;
+  TIKTOK_OPEN_ID?: string;
+
   // ---- Workers AI 评估路径 ----
   USE_WORKERS_AI_LLM?: string;
   WORKERS_AI_LLM?: string;

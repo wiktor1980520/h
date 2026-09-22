@@ -16,7 +16,7 @@ export type Stage =
   | 'done'
   | 'error';     // 流程级失败
 
-export type Platform = 'douyin' | 'xiaohongshu' | 'weixin';
+export type Platform = 'douyin' | 'xiaohongshu' | 'weixin' | 'instagram' | 'facebook' | 'tiktok';
 
 export type Resolution = '480p' | '720p' | '1080p';
 

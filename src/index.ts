@@ -10,6 +10,8 @@ import type { PublishRequest } from './publish';
 import { DouyinPublisher } from './publish/douyin';
 import { WeixinChannelsPublisher } from './publish/weixin';
 import { XiaohongshuPublisher } from './publish/xiaohongshu';
+import { MetaPublisher } from './publish/meta';
+import { TikTokPublisher } from './publish/tiktok';
 
 export { HuangtoolsPipelineWorkflow } from './workflow/pipeline';
 
@@ -477,6 +479,9 @@ function buildRegistry(cfg: Env, media: MediaStore): PublisherRegistry {
     new DouyinPublisher(cfg, media),
     new WeixinChannelsPublisher(cfg, media),
     new XiaohongshuPublisher(cfg, media),
+    new MetaPublisher(cfg, media, 'instagram'),
+    new MetaPublisher(cfg, media, 'facebook'),
+    new TikTokPublisher(cfg, media),
   ]);
 }
 
@@ -486,6 +491,11 @@ async function listPlatforms(env: Env): Promise<Array<{ platform: string; ready:
   out.push({ platform: 'douyin', ready: !!cfg.DOUYIN_ACCESS_TOKEN, note: cfg.DOUYIN_ACCESS_TOKEN ? undefined : '缺少 DOUYIN_ACCESS_TOKEN' });
   out.push({ platform: 'weixin', ready: !!cfg.WEIXIN_CHANNELS_ACCESS_TOKEN, note: cfg.WEIXIN_CHANNELS_ACCESS_TOKEN ? undefined : '缺少 WEIXIN_CHANNELS_ACCESS_TOKEN' });
   out.push({ platform: 'xiaohongshu', ready: !!cfg.XHS_RPA_WEBHOOK, note: cfg.XHS_RPA_WEBHOOK ? undefined : '需 XHS_RPA_WEBHOOK（本地 RPA 桥）' });
+  const igReady = !!cfg.META_ACCESS_TOKEN && !!cfg.META_IG_USER_ID;
+  out.push({ platform: 'instagram', ready: igReady, note: igReady ? undefined : '缺少 META_ACCESS_TOKEN 或 IG 用户 ID' });
+  const fbReady = !!cfg.META_ACCESS_TOKEN && !!cfg.META_FB_PAGE_ID;
+  out.push({ platform: 'facebook', ready: fbReady, note: fbReady ? undefined : '缺少 META_ACCESS_TOKEN 或 FB 主页 ID' });
+  out.push({ platform: 'tiktok', ready: !!cfg.TIKTOK_ACCESS_TOKEN, note: cfg.TIKTOK_ACCESS_TOKEN ? undefined : '缺少 TIKTOK_ACCESS_TOKEN' });
   return out;
 }
 

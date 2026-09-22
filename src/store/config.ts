@@ -16,6 +16,11 @@ export const CONFIG_KEYS = [
   'WEIXIN_CHANNELS_APPID',
   'WEIXIN_CHANNELS_ACCESS_TOKEN',
   'XHS_RPA_WEBHOOK',
+  'META_ACCESS_TOKEN',
+  'META_IG_USER_ID',
+  'META_FB_PAGE_ID',
+  'TIKTOK_ACCESS_TOKEN',
+  'TIKTOK_OPEN_ID',
 ] as const;
 
 export type ConfigKey = (typeof CONFIG_KEYS)[number];

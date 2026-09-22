@@ -2,7 +2,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 
 const STAGE_ORDER = ['init', 'parse', 'tryon', 'video', 'publish', 'done'];
-const PLATFORM_LABEL = { douyin: '抖音', xiaohongshu: '小红书', weixin: '视频号' };
+const PLATFORM_LABEL = { douyin: '抖音', xiaohongshu: '小红书', weixin: '视频号', instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
 const ACCESS_KEY = sessionStorage.getItem('app_access_key') || '';
 
 let configRevealed = false; // 配置页"查看明文"开关
@@ -20,6 +20,11 @@ const CONFIG_FIELDS = [
   ['WEIXIN_CHANNELS_APPID', '视频号 AppID'],
   ['WEIXIN_CHANNELS_ACCESS_TOKEN', '视频号 access_token'],
   ['XHS_RPA_WEBHOOK', '小红书 RPA Webhook'],
+  ['META_ACCESS_TOKEN', 'Meta access_token'],
+  ['META_IG_USER_ID', 'Instagram 用户 ID'],
+  ['META_FB_PAGE_ID', 'Facebook 主页 ID'],
+  ['TIKTOK_ACCESS_TOKEN', 'TikTok access_token'],
+  ['TIKTOK_OPEN_ID', 'TikTok open_id'],
 ];
 
 async function api(path, opts = {}) {
@@ -377,6 +382,9 @@ function renderNew() {
             <label class="pill"><input type="checkbox" class="pub-check" value="douyin" checked />抖音（挂车）</label>
             <label class="pill"><input type="checkbox" class="pub-check" value="xiaohongshu" />小红书</label>
             <label class="pill"><input type="checkbox" class="pub-check" value="weixin" />视频号</label>
+            <label class="pill"><input type="checkbox" class="pub-check" value="instagram" />Instagram</label>
+            <label class="pill"><input type="checkbox" class="pub-check" value="facebook" />Facebook</label>
+            <label class="pill"><input type="checkbox" class="pub-check" value="tiktok" />TikTok</label>
           </div>
         </div>
         <div class="actions">
