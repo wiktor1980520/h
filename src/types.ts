@@ -55,6 +55,18 @@ export interface PublishTarget {
   accountId?: string;
 }
 
+/** 独立发布流水：任务完成后每次发布动作一行，支持同平台多次发布与计数 */
+export interface PublishLogRecord {
+  id: string;
+  jobId: string;
+  platform: Platform;
+  status: 'published' | 'failed';
+  externalId?: string;
+  url?: string;
+  error?: string;
+  createdAt: string;
+}
+
 export interface ParsedGarment {
   garmentImage?: MediaRef;
   title?: string;

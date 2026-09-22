@@ -218,6 +218,16 @@ export class HuangtoolsPipelineWorkflow extends WorkflowEntrypoint<Env, Pipeline
           productId: target.productId,
           accountId: target.accountId,
         });
+        await store.addPublishLog({
+          id: crypto.randomUUID(),
+          jobId,
+          platform: target.platform,
+          status: res.status,
+          externalId: res.externalId,
+          url: res.url,
+          error: res.error,
+          createdAt: new Date().toISOString(),
+        });
         if (res.status === 'published') {
           target.status = 'published';
           target.externalId = res.externalId;

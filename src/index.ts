@@ -1,7 +1,7 @@
 // index.ts — Worker 入口：静态资源 + REST API + R2 媒体回源
 import type { Env } from './env';
 import type { Job, MediaRef, Platform } from './types';
-import { emptyJob, newJobId, pushLog } from './types';
+import { emptyJob, newJobId } from './types';
 import { JobStore } from './store/d1';
 import { ConfigStore, CONFIG_KEYS, overlayConfig, getAuthPassword } from './store/config';
 import { MediaStore } from './storage/r2';
@@ -233,12 +233,11 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
   }
 
   const publishMatch = /^\/api\/jobs\/([^/]+)\/publish$/.exec(p);
-  if (publishMatch && request.method === 'POST') {
-    return publishJob(publishMatch[1], env, store);
+  if (publishMatch && request.method === 'GET') {
+    return publishHistory(publishMatch[1], store);
   }
-  // PUT — 修改指定发布平台的发布内容（标题/文案/标签/挂车商品/账号）
-  if (publishMatch && request.method === 'PUT') {
-    return savePublishContent(publishMatch[1], request, store);
+  if (publishMatch && request.method === 'POST') {
+    return publishJob(publishMatch[1], request, env, store);
   }
 
   if (p.endsWith('/cancel') && request.method === 'POST') {
@@ -386,30 +385,7 @@ async function uploadFile(request: Request, env: Env): Promise<Response> {
   return json({ ref, key }, 201);
 }
 
-/** PUT /api/jobs/:id/publish — 保存指定发布平台的发布内容（标题/文案/标签/挂车商品/账号） */
-async function savePublishContent(id: string, request: Request, store: JobStore): Promise<Response> {
-  const job = await store.get(id);
-  if (!job) return notFound();
-  const body = (await request.json().catch(() => ({}))) as PublishContentBody;
-  const target = job.publish.find((t) => t.platform === body.platform);
-  if (!target) return json({ error: '该平台未选择发布' }, 404);
-  if (target.status === 'published') return json({ error: '该平台已发布，无法修改内容' }, 400);
-  if ('title' in body) target.title = body.title ?? undefined;
-  if ('desc' in body) target.desc = body.desc ?? undefined;
-  if ('tags' in body) target.tags = Array.isArray(body.tags) ? body.tags.map(String).filter(Boolean) : undefined;
-  if ('productId' in body) target.productId = body.productId ?? undefined;
-  if ('accountId' in body) target.accountId = body.accountId ?? undefined;
-  pushLog(job, 'publish', 'info', `已更新 ${body.platform} 发布内容`);
-  await store.save(job);
-  return json({
-    ok: true,
-    platform: target.platform,
-    content: { title: target.title, desc: target.desc, tags: target.tags, productId: target.productId, accountId: target.accountId },
-  });
-}
-
 interface PublishContentBody {
-  platform: Platform;
   title?: string;
   desc?: string;
   tags?: string[];
@@ -417,57 +393,68 @@ interface PublishContentBody {
   accountId?: string;
 }
 
-/** 由发布目标 + 兜底标题生成发布请求 */
-function publishRequestFor(job: Job, t: Job['publish'][number], videoR2Key: string): PublishRequest {
+/** 由任务 + 本次发布内容生成发布请求；未传 content 时回落任务预设/商品标题 */
+function publishRequestFor(job: Job, platform: Platform, videoR2Key: string, content?: PublishContentBody): PublishRequest {
+  const t = job.publish.find((x) => x.platform === platform);
   return {
     jobId: job.id,
     videoR2Key,
-    title: t.title ?? job.parsed?.title ?? `AI 换装短视频 ${job.id}`,
-    desc: t.desc,
-    tags: t.tags,
-    productId: t.productId,
-    accountId: t.accountId,
+    title: content?.title ?? t?.title ?? job.parsed?.title ?? `AI 换装短视频 ${job.id}`,
+    desc: content?.desc ?? t?.desc,
+    tags: content?.tags ?? t?.tags,
+    productId: content?.productId ?? t?.productId,
+    accountId: content?.accountId ?? t?.accountId,
   };
 }
 
-/** POST /api/jobs/:id/publish — 生成完成后手动触发发布（重发 pending/manual/failed 目标） */
-async function publishJob(id: string, env: Env, store: JobStore): Promise<Response> {
+/** GET /api/jobs/:id/publish — 发布历史（流水）与各平台计数 */
+async function publishHistory(id: string, store: JobStore): Promise<Response> {
+  return json({ logs: await store.publishLogs(id), counts: await store.publishCounts(id) });
+}
+
+/** POST /api/jobs/:id/publish — 独立发布：任务完成后可自由选平台、同平台可多次发布，并计数 */
+async function publishJob(id: string, request: Request, env: Env, store: JobStore): Promise<Response> {
   const job = await store.get(id);
   if (!job) return notFound();
   if (journalHasVideo(job) !== true) {
     return json({ error: '视频尚未生成完成，请稍后再发布' }, 400);
   }
+  const body = (await request.json().catch(() => ({}))) as { platforms?: string[]; content?: PublishContentBody };
+  const requested = Array.isArray(body.platforms) && body.platforms.length ? body.platforms : job.publish.map((t) => t.platform);
   const cfg = await overlayConfig(env);
   const media = new MediaStore(env, cfg.R2_PUBLIC_BASE);
   const registry = buildRegistry(cfg, media);
+  const videoKey = job.video!.output!.value;
   const out: Array<{ platform: string; status: string; error?: string; url?: string; externalId?: string }> = [];
-  for (const t of job.publish) {
-    if (t.status === 'published') {
-      out.push({ platform: t.platform, status: 'published', url: t.url, externalId: t.externalId });
-      continue;
-    }
-    const pub = registry.get(t.platform);
+
+  for (const platform of requested) {
+    const pub = registry.get(platform as Platform);
+    const recBase = { id: newJobId(), jobId: job.id, platform: platform as Platform, createdAt: new Date().toISOString() };
     if (!pub || !pub.ready) {
-      t.status = 'failed';
-      t.error = '平台未配置或未就绪';
-      out.push({ platform: t.platform, status: 'failed', error: t.error });
+      await store.addPublishLog({ ...recBase, status: 'failed', error: '平台未配置或未就绪' });
+      out.push({ platform, status: 'failed', error: '平台未配置或未就绪' });
       continue;
     }
-    const res = await pub.publish(publishRequestFor(job, t, job.video!.output!.value));
-    if (res.status === 'published') {
-      t.status = 'published';
-      t.externalId = res.externalId;
-      t.url = res.url;
-      t.publishedAt = new Date().toISOString();
-      t.error = undefined;
-    } else {
-      t.status = 'failed';
-      t.error = res.error;
+    try {
+      const res = await pub.publish(publishRequestFor(job, platform as Platform, videoKey, body.content));
+      await store.addPublishLog({ ...recBase, status: res.status, externalId: res.externalId, url: res.url, error: res.error });
+      out.push({ platform, status: res.status, url: res.url, externalId: res.externalId, error: res.error });
+      const t = job.publish.find((x) => x.platform === platform);
+      if (t) {
+        t.status = res.status;
+        t.externalId = res.externalId;
+        t.url = res.url;
+        t.error = res.error;
+        if (res.status === 'published') t.publishedAt = recBase.createdAt;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await store.addPublishLog({ ...recBase, status: 'failed', error: msg });
+      out.push({ platform, status: 'failed', error: msg });
     }
-    out.push({ platform: t.platform, status: t.status, error: t.error, url: t.url, externalId: t.externalId });
   }
   await store.save(job);
-  return json({ ok: true, results: out });
+  return json({ ok: true, results: out, counts: await store.publishCounts(id) });
 }
 
 function journalHasVideo(job: Job): boolean {

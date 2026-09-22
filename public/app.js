@@ -534,36 +534,34 @@ function paintJobDetail(view, job) {
     : '';
 
   const pubRom =
-    (job.publish || [])
-      .map((t) => {
-        const can = canPublish && t.status !== 'published';
-        const pl = t.platform;
-        return `
-        <div class="pub-row">
-          <div>
-            <div class="pub-name">${platformLabel(pl)}</div>
-            <div class="sub">${esc(t.title ?? (job.parsed?.title ?? ''))}${(t.accountId || t.productId ? ` · 账号${esc(t.accountId ?? '默认')}` : '')}${t.productId ? ` · 挂车${esc(t.productId)}` : ''}${t.error ? ' · ' + esc(t.error) : ''}</div>
+    canPublish
+      ? `<div class="pub-pick">
+            <label class="field-t">选择发布平台</label>
+            <div class="radio-row" id="pub-platforms">
+              ${Object.keys(PLATFORM_LABEL)
+                .map(
+                  (pl) =>
+                    `<label class="pill pub-check"><input type="checkbox" value="${pl}" />${platformLabel(pl)}</label>`,
+                )
+                .join('')}
+            </div>
           </div>
-          <span class="badge ${t.status}">${t.status}</span>
-          ${can ? `<button class="btn sm" data-pub="${pl}">发布</button>
-                   <button class="btn ghost sm" data-toggle-edit="${pl}">编辑内容</button>` : ''}
-        </div>
-        ${can ? `
-        <div class="pub-edit" id="pub-edit-${pl}" hidden>
-          <div class="field"><label>标题</label><input class="pet" data-p="${pl}" data-k="title" value="${escAttr(t.title ?? '')}" placeholder="默认用商品标题" /></div>
-          <div class="field"><label>文案</label><textarea class="pet" data-p="${pl}" data-k="desc" rows="2" placeholder="视频正文 / 评论区引导文案">${esc(t.desc ?? '')}</textarea></div>
-          <div class="field"><label>标签（逗号分隔）</label><input class="pet" data-p="${pl}" data-k="tags" value="${escAttr((t.tags ?? []).join(', '))}" placeholder="#穿搭 #试穿" /></div>
-          <div class="row">
-            <div class="field"><label>挂车商品 ID</label><input class="pet" data-p="${pl}" data-k="productId" value="${escAttr(t.productId ?? '')}" placeholder="抖音/视频号带货商品ID" /></div>
-            <div class="field"><label>账号（open_id）</label><input class="pet" data-p="${pl}" data-k="accountId" value="${escAttr(t.accountId ?? '')}" placeholder="留空用默认账号" /></div>
+          <div class="pub-edit">
+            <div class="field"><label>标题</label><input class="pet" id="pp-title" value="${escAttr(job.parsed?.title ?? '')}" placeholder="默认用商品标题" /></div>
+            <div class="field"><label>文案</label><textarea class="pet" id="pp-desc" rows="2" placeholder="视频正文 / 评论区引导文案"></textarea></div>
+            <div class="field"><label>标签（逗号分隔）</label><input class="pet" id="pp-tags" placeholder="#穿搭 #试穿" /></div>
+            <div class="row">
+              <div class="field"><label>挂车商品 ID</label><input class="pet" id="pp-productId" placeholder="抖音/视频号带货商品ID" /></div>
+              <div class="field"><label>账号（open_id）</label><input class="pet" id="pp-accountId" placeholder="留空用默认账号" /></div>
+            </div>
           </div>
           <div class="rows-actions">
-            <button type="button" class="btn primary sm" data-save-pub="${pl}">保存内容</button>
-            <span class="puberr" id="puberr-${pl}"></span>
+            <button type="button" class="btn primary" id="pub-go">发布到所选平台</button>
+            <span class="puberr" id="puberr"></span>
           </div>
-        </div>` : ''}`;
-      })
-      .join('') || '<div class="empty">未选择发布平台</div>';
+          <div class="pub-counts" id="pub-counts"></div>
+          <table class="pub-table"><caption>发布记录</caption><thead><tr><th>平台</th><th>状态</th><th>时间</th><th>结果</th></tr></thead><tbody id="pub-logs"></tbody></table>`
+      : '<div class="empty">任务生成完成后即可自由选择平台发布</div>';
 
   const prompt = job.video?.prompt;
 
@@ -594,52 +592,84 @@ function paintJobDetail(view, job) {
       <div class="prompt-card"><span class="prompt-tag">电商展示</span><div class="prompt-text">${esc(prompt)}</div></div>
     </section>` : ''}
     <section class="card">
-      <header class="list-head"><h2>发布</h2>
-        ${canPublish ? '<button class="btn primary sm" id="pub-all">发布待发布项</button>' : ''}
-      </header>
+      <header class="list-head"><h2>发布</h2></header>
       <div class="pub-list">${pubRom}</div>
     </section>`;
 
-  view.querySelectorAll('[data-pub]').forEach((b) => b.addEventListener('click', () => triggerPublish(job.id, b.dataset.pub)));
-  view.querySelectorAll('[data-toggle-edit]').forEach((b) =>
-    b.addEventListener('click', () => {
-      const panel = view.querySelector(`#pub-edit-${b.dataset.toggleEdit}`);
-      if (panel) panel.hidden = !panel.hidden;
-    }),
-  );
-  view.querySelectorAll('[data-save-pub]').forEach((b) =>
-    b.addEventListener('click', () => savePublishContent(job.id, b.dataset.savePub, view)),
-  );
-  const pubAll = view.querySelector('#pub-all');
-  if (pubAll) pubAll.addEventListener('click', () => triggerPublish(job.id));
+  const goBtn = view.querySelector('#pub-go');
+  if (goBtn) goBtn.addEventListener('click', () => publishSelected(job.id, view));
+  loadPublishPanel(job.id, view);
   const cancelBtn = view.querySelector('#cancel-job');
   if (cancelBtn) cancelBtn.addEventListener('click', () => confirmCancel(job.id));
   const delBtn = view.querySelector('#del-job');
   if (delBtn) delBtn.addEventListener('click', () => confirmDelete(job.id));
 }
 
-/** 保存某发布平台的自定义发布内容（标题/文案/标签/挂车商品/账号） */
-async function savePublishContent(id, platform, view) {
-  const payload = { platform };
-  const panel = view.querySelector(`#pub-edit-${platform}`);
-  panel.querySelectorAll('.pet[data-p]').forEach((input) => {
-    const k = input.dataset.k;
-    const v = input.value.trim();
-    if (k === 'tags') {
-      payload.tags = v ? v.split(/[,，\s#]+/).map((x) => x.trim()).filter(Boolean) : undefined;
-    } else {
-      payload[k] = v || undefined;
-    }
-  });
-  const errEl = panel.querySelector(`#puberr-${platform}`);
-  errEl.textContent = '保存中…';
-  const res = await api(`/api/jobs/${id}/publish`, { method: 'PUT', body: JSON.stringify(payload) });
-  if (!res.ok) {
-    errEl.textContent = res.data.error ?? '保存失败';
+/** 加载并渲染发布历史 + 各平台计数 */
+async function loadPublishPanel(id, view) {
+  const res = await api(`/api/jobs/${id}/publish`);
+  const logsEl = view.querySelector('#pub-logs');
+  const countsEl = view.querySelector('#pub-counts');
+  if (!logsEl) return;
+  const counts = res.data?.counts ?? {};
+  const keyed = Object.fromEntries(
+    Object.entries(counts).map(([p, c]) => [p, `${c.published} 成功 / ${c.failed} 失败`]),
+  );
+  if (countsEl) {
+    countsEl.innerHTML = Object.keys(keyed).length
+      ? Object.entries(keyed).map(([p, c]) => `<span class="pubcount-chip"><b>${platformLabel(p)}</b>${c}</span>`).join('')
+      : '';
+  }
+  const logs = res.data?.logs ?? [];
+  logsEl.innerHTML =
+    logs
+      .map(
+        (l) =>
+          `<tr>
+            <td>${platformLabel(l.platform)}</td>
+            <td><span class="badge ${l.status}">${l.status}</span></td>
+            <td>${time(l.createdAt)}</td>
+            <td class="sub">${l.url ? `<a href="${escAttr(l.url)}" target="_blank" rel="noopener">链接</a>` : ''}${l.error ? esc(l.error) : ''}</td>
+          </tr>`,
+      )
+      .join('') || '<tr><td colspan="4" class="empty">暂无发布记录</td></tr>';
+}
+
+/** 发布到所选平台（可多次，同平台可重复发） */
+async function publishSelected(id, view) {
+  const errEl = view.querySelector('#puberr');
+  const platforms = [...view.querySelectorAll('#pub-platforms input:checked')].map((c) => c.value);
+  if (!platforms.length) {
+    errEl.className = 'puberr';
+    errEl.textContent = '请先勾选要发布的平台';
     return;
   }
-  errEl.textContent = '已保存';
-  renderJobDetail(id); // 刷新展示
+  const content = {
+    title: view.querySelector('#pp-title').value.trim() || undefined,
+    desc: view.querySelector('#pp-desc').value.trim() || undefined,
+    tags: tagsToArr(view.querySelector('#pp-tags').value),
+    productId: view.querySelector('#pp-productId').value.trim() || undefined,
+    accountId: view.querySelector('#pp-accountId').value.trim() || undefined,
+  };
+  errEl.className = 'puberr';
+  errEl.textContent = '发布中…';
+  const goBtn = view.querySelector('#pub-go');
+  goBtn.disabled = true;
+  const res = await api(`/api/jobs/${id}/publish`, { method: 'POST', body: JSON.stringify({ platforms, content }) });
+  goBtn.disabled = false;
+  if (!res.ok) {
+    errEl.className = 'puberr';
+    errEl.textContent = res.data.error ?? '发布失败';
+    return;
+  }
+  const failed = (res.data.results ?? []).filter((r) => r.status === 'failed').map((r) => platformLabel(r.platform)).join('、');
+  errEl.className = failed ? 'puberr' : 'puberr ok';
+  errEl.textContent = failed ? `发布失败：${failed}` : '发布完成';
+  loadPublishPanel(id, view);
+}
+
+function tagsToArr(v) {
+  return v ? v.split(/[,，\s#]+/).map((x) => x.trim()).filter(Boolean) : undefined;
 }
 
 async function confirmDelete(id) {
@@ -667,18 +697,6 @@ async function confirmCancel(id) {
   const route = (location.hash || '#/dashboard').split('?')[0];
   if (route === '#/dashboard' || route === '#/jobs') renderDashboard();
   else renderJobDetail(id);
-}
-
-async function triggerPublish(id, onlyPlatform) {
-  const res = await api(`/api/jobs/${id}/publish`, {
-    method: 'POST',
-    body: onlyPlatform ? JSON.stringify({ platform: onlyPlatform }) : '{}',
-  });
-  if (!res.ok) {
-    alert(res.data.error ?? '发布失败');
-    return;
-  }
-  renderJobDetail(id);
 }
 
 /* ---------------- 配置 ---------------- */

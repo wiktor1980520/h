@@ -1,6 +1,6 @@
-// store/d1.ts — D1 持久化层（任务 CRUD，payload 按 JSON 存储）
+// store/d1.ts — D1 持久化层（任务 CRUD + 发布流水，payload 按 JSON 存储）
 import type { Env } from '../env';
-import type { Job, JobStatus } from '../types';
+import type { Job, JobStatus, Platform, PublishLogRecord } from '../types';
 
 export interface ListResult {
   items: Job[];
@@ -13,6 +13,53 @@ export function rowToJob(row: { payload: string }): Job {
 
 export class JobStore {
   constructor(private env: Env) {}
+
+  // ---- 发布流水（独立发布/多次发布/计数） ----
+  async addPublishLog(r: PublishLogRecord): Promise<void> {
+    await this.env.DB.prepare(
+      `INSERT INTO publish_log (id, job_id, platform, status, external_id, url, error, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(r.id, r.jobId, r.platform, r.status, r.externalId ?? null, r.url ?? null, r.error ?? null, r.createdAt)
+      .run();
+  }
+
+  async publishLogs(jobId: string): Promise<PublishLogRecord[]> {
+    const { results } = await this.env.DB.prepare(
+      `SELECT id, job_id, platform, status, external_id, url, error, created_at
+       FROM publish_log WHERE job_id = ? ORDER BY rowid DESC`,
+    )
+      .bind(jobId)
+      .all<PublishLogRow>();
+    return results.map((r) => ({
+      id: r.id,
+      jobId: r.job_id,
+      platform: r.platform as Platform,
+      status: r.status as PublishLogRecord['status'],
+      externalId: r.external_id ?? undefined,
+      url: r.url ?? undefined,
+      error: r.error ?? undefined,
+      createdAt: r.created_at,
+    }));
+  }
+
+  /** 每个平台的发布计数（成功/失败/总次数） */
+  async publishCounts(jobId: string): Promise<Record<string, { published: number; failed: number; total: number }>> {
+    const { results } = await this.env.DB.prepare(
+      `SELECT platform, status, COUNT(*) AS n FROM publish_log WHERE job_id = ? GROUP BY platform, status`,
+    )
+      .bind(jobId)
+      .all<{ platform: Platform; status: string; n: number }>();
+    const counts: Record<string, { published: number; failed: number; total: number }> = {};
+    for (const r of results) {
+      counts[r.platform] ??= { published: 0, failed: 0, total: 0 };
+      const c = counts[r.platform];
+      if (r.status === 'published') c.published += r.n;
+      else if (r.status === 'failed') c.failed += r.n;
+      c.total += r.n;
+    }
+    return counts;
+  }
 
   async create(job: Job): Promise<void> {
     await this.env.DB.prepare(
@@ -92,4 +139,15 @@ export class JobStore {
       cursor: hasMore ? rows[rows.length - 1].deleted_at : undefined,
     };
   }
+}
+
+interface PublishLogRow {
+  id: string;
+  job_id: string;
+  platform: string;
+  status: string;
+  external_id: string | null;
+  url: string | null;
+  error: string | null;
+  created_at: string;
 }
