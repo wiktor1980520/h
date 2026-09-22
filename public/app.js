@@ -243,6 +243,7 @@ function jobRow(job) {
         ? `<img class="thumb" src="${mediaSrc(first)}" />`
         : `<span class="thumb ph"></span>`;
   const canCancel = ['queued', 'running'].includes(job.status);
+  const canPublishRow = job.status === 'succeeded' && !!job.video?.output?.value;
   return `
     <div class="job-row job-item" data-id="${job.id}">
       ${th}
@@ -253,6 +254,7 @@ function jobRow(job) {
       <span class="badge ${job.status}">${job.status}</span>
       <div class="sub jr-time">${time(job.updatedAt || job.createdAt)}</div>
       <div class="jr-ops">
+        ${canPublishRow ? `<button class="publish-quick" data-publish="${job.id}" title="发布到平台">发布</button>` : ''}
         ${canCancel ? `<button class="cancel-quick" data-cancel="${job.id}" title="终止任务">✕</button>` : ''}
         <button class="del-quick" data-del="${job.id}" title="删除任务">🗑</button>
       </div>
@@ -839,6 +841,13 @@ document.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     confirmCancel(cancelBtn.dataset.cancel);
+    return;
+  }
+  const publishBtn = e.target.closest('.publish-quick');
+  if (publishBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    location.hash = `#/job/${publishBtn.dataset.publish}`;
     return;
   }
   const item = e.target.closest('.job-item');

@@ -231,6 +231,7 @@ code { background: rgba(0, 0, 0, 0.05); padding: 1px 6px; border-radius: 6px; fo
 .pub-counts { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .pubcount-chip { font-size: 12px; color: var(--text-2); background: rgba(0, 0, 0, 0.05); padding: 3px 10px; border-radius: 980px; }
 .pubcount-chip b { font-weight: 600; margin-right: 6px; color: var(--text); }
+.publish-quick { background: #0a84ff; color: #fff; border: 0; border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
 .pub-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
 .pub-table caption { text-align: left; font-weight: 600; font-size: 13px; padding: 12px 0 6px; }
 .pub-table th, .pub-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
