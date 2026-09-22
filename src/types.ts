@@ -67,6 +67,14 @@ export interface PublishLogRecord {
   createdAt: string;
 }
 
+/** 模特库：复用预上传的模特照片，创建任务时可选用 */
+export interface Model {
+  id: string;
+  name: string;
+  photoKeys: string[]; // R2 对象 key
+  createdAt: string;
+}
+
 export interface ParsedGarment {
   garmentImage?: MediaRef;
   title?: string;

@@ -51,6 +51,19 @@ function esc(s) {
 function escAttr(s) {
   return esc(s);
 }
+function showToast(msg) {
+  let t = $('#toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.classList.add('show');
+  t.style.opacity = '1';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => (t.style.opacity = '0'), 2200);
+}
 function time(s) {
   return (s || '').slice(0, 19).replace('T', ' ');
 }
@@ -64,6 +77,7 @@ function platformLabel(p) {
 /* ---------------- 路由 ---------------- */
 const routes = {
   dashboard: renderDashboard,
+  models: renderModels,
   new: renderNew,
   config: renderConfig,
   recycle: renderRecycle,
@@ -330,8 +344,131 @@ async function purgeJob(id) {
 /* ---------------- 新建任务 ---------------- */
 let newJobState = { personRefs: [] };
 
+/* ---------------- 模特库 ---------------- */
+let modelFormRefs = []; // 新建模特表单里已上传的照片 ref
+let pendingPersonRefs = null; // 从模特库带到新建任务的照片 ref
+
+async function renderModels() {
+  const view = $('#view');
+  modelFormRefs = [];
+  view.innerHTML = `
+    <section class="hero"><div><h1>模特库</h1><p class="sub">维护可复用的模特与照片，创建任务时直接选用</p></div></section>
+    <section class="card">
+      <header class="list-head"><h2>新建模特</h2></header>
+      <div class="field"><label>模特姓名</label><input id="m-name" type="text" placeholder="如：林小雅" /></div>
+      <div class="field">
+        <label>模特照片 <span class="sub">（多张）</span></label>
+        <input id="m-files" type="file" accept="image/*" multiple />
+      </div>
+      <div id="m-thumbs" class="uploads"></div>
+      <div class="actions">
+        <button type="button" class="btn primary" id="m-save">保存模特</button>
+        <span id="m-msg" class="msg"></span>
+      </div>
+    </section>
+    <section class="card">
+      <header class="list-head"><h2>模特列表</h2></header>
+      <div id="m-list"><div class="loading sm">载入中…</div></div>
+    </section>`;
+  $('#m-files').addEventListener('change', async () => {
+    for (const file of [...document.querySelector('#m-files').files]) {
+      const b64 = await compressImageFile(file);
+      const res = await api('/api/upload', { method: 'POST', body: JSON.stringify({ fileName: file.name, contentType: 'image/jpeg', data: b64 }) });
+      if (res.ok && res.data.ref) modelFormRefs.push(res.data.ref);
+    }
+    renderModelThumbs();
+    document.querySelector('#m-files').value = '';
+  });
+  $('#m-save').addEventListener('click', saveModel);
+  renderModelThumbs();
+  loadModels();
+}
+
+function renderModelThumbs() {
+  const box = $('#m-thumbs');
+  if (!box) return;
+  box.innerHTML = modelFormRefs
+    .map(
+      (ref, i) => `
+      <div class="upload-thumb">
+        <img src="${mediaSrc(ref)}" />
+        <button type="button" class="thumb-del" data-mi="${i}">×</button>
+      </div>`,
+    )
+    .join('');
+  box.querySelectorAll('.thumb-del').forEach((b) =>
+    b.addEventListener('click', () => {
+      modelFormRefs.splice(Number(b.dataset.mi), 1);
+      renderModelThumbs();
+    }),
+  );
+}
+
+async function saveModel() {
+  const name = $('#m-name').value.trim();
+  const msg = $('#m-msg');
+  if (!name) return (msg.textContent = '请填写模特姓名');
+  if (!modelFormRefs.length) return (msg.textContent = '请至少上传一张模特照片');
+  msg.textContent = '保存中…';
+  const res = await api('/api/models', {
+    method: 'POST',
+    body: JSON.stringify({ name, photoKeys: modelFormRefs.map((r) => r.value) }),
+  });
+  if (!res.ok) {
+    msg.className = 'msg err';
+    return (msg.textContent = res.data.error ?? '保存失败');
+  }
+  modelFormRefs = [];
+  $('#m-name').value = '';
+  renderModelThumbs();
+  loadModels();
+  msg.className = 'msg ok';
+  msg.textContent = '已保存';
+}
+
+async function loadModels() {
+  const box = $('#m-list');
+  if (!box) return;
+  const res = await api('/api/models');
+  const models = res.data?.models ?? [];
+  if (!models.length) return (box.innerHTML = '<div class="empty">暂无模特，先新建一个</div>');
+  box.innerHTML = models
+    .map(
+      (m) => `
+      <div class="model-card">
+        <div class="model-photos">
+          ${m.photoKeys.map((k) => `<img src="${mediaSrc({ kind: 'r2', value: k })}" />`).join('')}
+        </div>
+        <div class="model-name">${esc(m.name)}</div>
+        <div class="sub">${m.photoKeys.length} 张照片 · ${esc(m.createdAt.slice(0, 10))}</div>
+        <div class="row">
+          <button type="button" class="btn primary sm" data-use-model="${m.id}">用于新任务</button>
+          <button type="button" class="btn ghost sm" data-del-model="${m.id}">删除</button>
+        </div>
+      </div>`,
+    )
+    .join('');
+  box.querySelectorAll('[data-use-model]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const m = models.find((x) => x.id === b.dataset.useModel);
+      if (!m) return;
+      pendingPersonRefs = m.photoKeys.map((k) => ({ kind: 'r2', value: k }));
+      showToast(`已选用「${m.name}」的照片，去新建任务提交`);
+      location.hash = '#/new';
+    }),
+  );
+  box.querySelectorAll('[data-del-model]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirm('删除该模特？（照片文件保留于存储）')) return;
+      await api(`/api/models/${b.dataset.delModel}`, { method: 'DELETE' });
+      loadModels();
+    }),
+  );
+}
+
 function renderNew() {
-  newJobState = { personRefs: [] };
+  newJobState = { personRefs: pendingPersonRefs || [] };
+  pendingPersonRefs = null;
   const view = $('#view');
   view.innerHTML = `
     <section class="hero"><div><h1>新建任务</h1><p class="sub">上传人物图 + 商品，自动生成试穿短视频</p></div></section>
@@ -429,6 +566,7 @@ function renderNew() {
     $('#garment-value').placeholder = e.target.value === 'link' ? 'https://item.jd.com/… 或商品图链接' : 'https://…/garment.jpg';
   });
   $('#job-form').addEventListener('submit', onSubmitJob);
+  renderThumbs(); // 展示从模特库带入的照片
 }
 
 function renderThumbs() {

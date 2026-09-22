@@ -1,6 +1,6 @@
 // store/d1.ts — D1 持久化层（任务 CRUD + 发布流水，payload 按 JSON 存储）
 import type { Env } from '../env';
-import type { Job, JobStatus, Platform, PublishLogRecord } from '../types';
+import type { Job, JobStatus, Model, Platform, PublishLogRecord } from '../types';
 
 export interface ListResult {
   items: Job[];
@@ -59,6 +59,33 @@ export class JobStore {
       c.total += r.n;
     }
     return counts;
+  }
+
+  // ---- 模特库 ----
+  async createModel(m: Model): Promise<void> {
+    await this.env.DB.prepare('INSERT INTO models (id, name, photo_keys, created_at) VALUES (?, ?, ?, ?)')
+      .bind(m.id, m.name, JSON.stringify(m.photoKeys), m.createdAt)
+      .run();
+  }
+
+  async listModels(): Promise<Model[]> {
+    const { results } = await this.env.DB.prepare('SELECT * FROM models WHERE deleted_at IS NULL ORDER BY rowid DESC').all<ModelRow>();
+    return results.map((r) => ({
+      id: r.id,
+      name: r.name,
+      photoKeys: JSON.parse(r.photo_keys || '[]') as string[],
+      createdAt: r.created_at,
+    }));
+  }
+
+  async getModel(id: string): Promise<Model | null> {
+    const res = await this.env.DB.prepare('SELECT * FROM models WHERE id = ? AND deleted_at IS NULL').bind(id).first<ModelRow>();
+    if (!res) return null;
+    return { id: res.id, name: res.name, photoKeys: JSON.parse(res.photo_keys || '[]') as string[], createdAt: res.created_at };
+  }
+
+  async deleteModel(id: string): Promise<void> {
+    await this.env.DB.prepare('DELETE FROM models WHERE id = ?').bind(id).run();
   }
 
   async create(job: Job): Promise<void> {
@@ -149,5 +176,12 @@ interface PublishLogRow {
   external_id: string | null;
   url: string | null;
   error: string | null;
+  created_at: string;
+}
+
+interface ModelRow {
+  id: string;
+  name: string;
+  photo_keys: string;
   created_at: string;
 }

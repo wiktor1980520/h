@@ -237,6 +237,15 @@ code { background: rgba(0, 0, 0, 0.05); padding: 1px 6px; border-radius: 6px; fo
 .pub-table th, .pub-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
 .pub-table th { color: var(--text-2); font-weight: 500; }
 
+/* ---------- 模特库 ---------- */
+#m-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.model-card { border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 16px; padding: 12px; background: #fff; }
+.model-photos { display: flex; gap: 6px; overflow: auto; margin-bottom: 10px; }
+.model-photos img { width: 88px; height: 118px; object-fit: cover; border-radius: 8px; }
+.model-name { font-weight: 600; margin-bottom: 2px; }
+
+#toast { position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); background: rgba(20, 20, 20, 0.9); color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 13px; transition: opacity 0.3s; z-index: 999; opacity: 0; pointer-events: none; }
+
 /* ---------- 表单 ---------- */
 .field { margin-bottom: 18px; }
 .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 7px; }

@@ -1,6 +1,6 @@
 // index.ts — Worker 入口：静态资源 + REST API + R2 媒体回源
 import type { Env } from './env';
-import type { Job, MediaRef, Platform } from './types';
+import type { Job, MediaRef, Model, Platform } from './types';
 import { emptyJob, newJobId } from './types';
 import { JobStore } from './store/d1';
 import { ConfigStore, CONFIG_KEYS, overlayConfig, getAuthPassword } from './store/config';
@@ -240,6 +240,19 @@ async function routeApi(request: Request, url: URL, env: Env): Promise<Response>
     return publishJob(publishMatch[1], request, env, store);
   }
 
+  // 模特库
+  if (p === '/api/models' && request.method === 'GET') {
+    return json({ models: await store.listModels() });
+  }
+  if (p === '/api/models' && request.method === 'POST') {
+    return createModel(request, store);
+  }
+  const modelMatch = /^\/api\/models\/([^/]+)$/.exec(p);
+  if (modelMatch && request.method === 'DELETE') {
+    await store.deleteModel(decodeURIComponent(modelMatch[1]));
+    return json({ ok: true });
+  }
+
   if (p.endsWith('/cancel') && request.method === 'POST') {
     const id = p.split('/').filter(Boolean).at(-2);
     if (id) return cancelJob(id, env, store);
@@ -383,6 +396,18 @@ async function uploadFile(request: Request, env: Env): Promise<Response> {
   await env.MEDIA_BUCKET.put(key, base64ToBytes(raw), { httpMetadata: { contentType } });
   const ref: MediaRef = { kind: 'r2', value: key };
   return json({ ref, key }, 201);
+}
+
+/** POST /api/models — 新建模特（name + 已上传到 R2 的 photo keys） */
+async function createModel(request: Request, store: JobStore): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { name?: string; photoKeys?: string[] };
+  const name = (body.name ?? '').trim();
+  const photoKeys = (body.photoKeys ?? []).filter((k) => typeof k === 'string' && k.length);
+  if (!name) return json({ error: '模特姓名必填' }, 400);
+  if (!photoKeys.length) return json({ error: '至少上传一张模特照片' }, 400);
+  const model: Model = { id: newJobId(), name, photoKeys, createdAt: new Date().toISOString() };
+  await store.createModel(model);
+  return json({ ok: true, model }, 201);
 }
 
 interface PublishContentBody {
