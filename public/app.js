@@ -128,6 +128,7 @@ function renderLogin() {
 
 function navigate() {
   if (document.body.classList.contains('authed') && !ACCESS_KEY) return;
+  if (dashTimer) clearInterval(dashTimer); // 离开看板时停止后台轮询并重置
   const hash = (location.hash || '#/dashboard').replace(/^#/, '');
   const [path, arg] = hash.slice(1).split('/');
   for (const a of document.querySelectorAll('[data-nav]')) {
@@ -149,31 +150,16 @@ async function renderVersion() {
 }
 
 /* ---------------- 看板 ---------------- */
+let dashTimer = null;
+
 async function renderDashboard() {
   const view = $('#view');
   view.innerHTML = `<div class="loading">载入中…</div>`;
-  const [jobsRes, platRes] = await Promise.all([api('/api/jobs?limit=100'), api('/api/platforms')]);
-  const items = jobsRes.data.items ?? [];
-  const statusCount = { queued: 0, running: 0, succeeded: 0, failed: 0, canceled: 0 };
-  for (const j of items) statusCount[j.status] = (statusCount[j.status] || 0) + 1;
-  const total = items.length || 0;
-  const running = statusCount.running + statusCount.queued;
 
+  const platRes = await api('/api/platforms');
   const pats = (platRes.data.platforms ?? [])
     .map((p) => `<span class="chip ${p.ready ? 'on' : 'off'}">${platformLabel(p.platform)}${p.ready ? '' : '·未配置'}</span>`)
     .join('');
-
-  const cards = [
-    ['总任务', total, 'total'],
-    ['进行中', running, 'run'],
-    ['已完成', statusCount.succeeded + statusCount.failed + statusCount.canceled, 'ok'],
-    ['失败', statusCount.failed, 'err'],
-  ]
-    .map(([l, v, c]) => `<div class="stat ${c}"><span class="stat-num">${v}</span><span class="stat-label">${l}</span></div>`)
-    .join('');
-
-  const recent =
-    items.slice(0, 8).map(jobCard).join('') || '<div class="empty">暂无任务</div>';
 
   view.innerHTML = `
     <section class="hero">
@@ -183,24 +169,51 @@ async function renderDashboard() {
       </div>
       <a class="btn primary" href="#/new">＋ 新建任务</a>
     </section>
-    <section class="stats">${cards}</section>
-    <section class="pipeline-note">
-      <div>
-        <h3>生成流程</h3>
-        <p class="sub">解析商品 → 虚拟试穿 → 图生视频 → 发布</p>
-      </div>
-      <div class="platforms">${pats}</div>
-    </section>
+    ${pats ? `<div class="platforms strip">${pats}</div>` : ''}
+    <section class="stats" id="dash-stats"><div class="loading sm">…</div></section>
     <section class="card">
       <header class="list-head">
-        <h2>最近任务</h2>
+        <h2>最近任务 <span id="dash-live" class="live"></span></h2>
         <a class="btn ghost" href="#/job">查看全部</a>
       </header>
-      <div class="jobs">${recent}</div>
+      <div id="dash-jobs" class="jobs-table"><div class="loading sm">载入中…</div></div>
     </section>`;
+
+  await refreshDashboardSlice();
+  if (dashTimer) clearInterval(dashTimer);
+  dashTimer = setInterval(refreshDashboardSlice, 4000);
 }
 
-function jobCard(job) {
+/** 后台刷新：只更新统计与任务列表，不重建整页，避免任务执行中反复整页刷新 */
+async function refreshDashboardSlice() {
+  const jobsEl = $('#dash-jobs');
+  if (!jobsEl) {
+    if (dashTimer) clearInterval(dashTimer);
+    return; // 已离开看板
+  }
+  const statsEl = $('#dash-stats');
+  const live = $('#dash-live');
+  const res = await api('/api/jobs?limit=50');
+  const items = res.data?.items ?? [];
+  const statusCount = { queued: 0, running: 0, succeeded: 0, failed: 0, canceled: 0 };
+  for (const j of items) statusCount[j.status] = (statusCount[j.status] || 0) + 1;
+  const total = items.length || 0;
+  const running = statusCount.running + statusCount.queued;
+  const cards = [
+    ['总任务', total, 'total'],
+    ['进行中', running, 'run'],
+    ['已完成', statusCount.succeeded + statusCount.failed + statusCount.canceled, 'ok'],
+    ['失败', statusCount.failed, 'err'],
+  ]
+    .map(([l, v, c]) => `<div class="stat ${c}"><span class="stat-num">${v}</span><span class="stat-label">${l}</span></div>`)
+    .join('');
+  if (statsEl) statsEl.innerHTML = cards;
+  if (jobsEl) jobsEl.innerHTML = items.map(jobRow).join('') || '<div class="empty">暂无任务</div>';
+  if (live) live.textContent = running ? `·${running} 个进行中` : '';
+}
+
+/** 最近任务 → 列表行（缩略图 / 标题+日志 / 状态 / 时间 / 操作） */
+function jobRow(job) {
   const last = job.logs?.length ? job.logs[job.logs.length - 1].msg : '';
   const first = job.personImages?.[0] ?? job.personImage;
   const th = job.video?.output
@@ -209,17 +222,18 @@ function jobCard(job) {
       ? `<img class="thumb" src="${mediaSrc(job.tryOn.output)}" />`
       : first?.value
         ? `<img class="thumb" src="${mediaSrc(first)}" />`
-        : '';
+        : `<span class="thumb ph"></span>`;
   const canCancel = ['queued', 'running'].includes(job.status);
   return `
-    <div class="job-item" data-id="${job.id}">
+    <div class="job-row job-item" data-id="${job.id}">
       ${th}
-      <div class="job-item-body">
+      <div class="jr-main">
         <div class="job-title">${esc(job.parsed?.title ?? job.id.slice(0, 8))}</div>
-        <span class="badge ${job.status}">${job.status}</span>
-        <div class="sub">${esc(last) || time(job.createdAt)}</div>
+        <div class="sub jr-log">${esc(last) || '…'}</div>
       </div>
-      <div class="item-ops">
+      <span class="badge ${job.status}">${job.status}</span>
+      <div class="sub jr-time">${time(job.updatedAt || job.createdAt)}</div>
+      <div class="jr-ops">
         ${canCancel ? `<button class="cancel-quick" data-cancel="${job.id}" title="终止任务">✕</button>` : ''}
         <button class="del-quick" data-del="${job.id}" title="删除任务">🗑</button>
       </div>
